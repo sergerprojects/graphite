@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.14
+- Snapshots: a bottom row of people no longer cuts the right side off the shared slide. Only a lined-up row or column of tiles counts as a strip.
+
 ## 0.9.13
 - Snapshots: a column of people down the side of a share is cut off as well as a row along the bottom.
 - Speaker names: a voice that lines up with the same person twice gets their name straight away, and "Speaker N" fills in as that name (earlier lines are renamed too).

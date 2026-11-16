@@ -87,14 +87,26 @@ pub fn without_tile_strip(stage: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
     let right_from = stage[0] + stage[2] * 0.6;
     let bottom_from = stage[1] + stage[3] * 0.6;
     let (right_edge, bottom_edge) = (stage[0] + stage[2] * 1.1, stage[1] + stage[3] * 1.1);
-    // A column of tiles down the right side (any height), else a row along the bottom.
-    let column = |t: &&Tile| t.rect[0] >= right_from - 4.0 && t.rect[0] < right_edge;
-    let row = |t: &&Tile| t.rect[1] >= bottom_from - 4.0 && t.rect[1] < bottom_edge && t.rect[0] < right_from;
-    if let Some(x) = tiles.iter().filter(column).map(|t| t.rect[0]).reduce(f64::min) {
-        out[2] = (x - 2.0 - stage[0]).max(0.0);
-    }
-    if let Some(y) = tiles.iter().filter(row).map(|t| t.rect[1]).reduce(f64::min) {
+
+    // Tiles lined up the same way make a strip: a row shares a top edge, a column a left edge.
+    // (A tile at the far right of a bottom row is NOT a column: its left edge is shared with
+    // at most the tile above it.)
+    let lined_up = |keys: Vec<f64>, need: usize| -> Option<f64> {
+        let mut sorted = keys.clone();
+        sorted.sort_by(|a, b| a.total_cmp(b));
+        sorted
+            .iter()
+            .filter(|k| keys.iter().filter(|o| (**o - **k).abs() <= 6.0).count() >= need)
+            .copied()
+            .reduce(f64::min)
+    };
+    let in_bottom: Vec<&Tile> = tiles.iter().filter(|t| t.rect[1] >= bottom_from - 4.0 && t.rect[1] < bottom_edge).collect();
+    let in_right: Vec<&Tile> = tiles.iter().filter(|t| t.rect[0] >= right_from - 4.0 && t.rect[0] < right_edge).collect();
+    if let Some(y) = lined_up(in_bottom.iter().map(|t| t.rect[1]).collect(), 3) {
         out[3] = (y - 2.0 - stage[1]).max(0.0);
+    }
+    if let Some(x) = lined_up(in_right.iter().map(|t| t.rect[0]).collect(), 3) {
+        out[2] = (x - 2.0 - stage[0]).max(0.0);
     }
     out
 }
@@ -322,18 +334,27 @@ mod tests {
     #[test]
     fn the_strip_of_people_is_cut_off_the_shared_area() {
         let tile = |x: f64, y: f64| Tile { name: "x".into(), classes: HashSet::new(), area: 0.0, rect: [x, y, 200.0, 120.0] };
-        // stage 1600x1000 at (0,0); a row of tiles along the bottom starting at y=860
         let stage = [0.0, 0.0, 1600.0, 1000.0];
-        let r = without_tile_strip(stage, &[tile(0.0, 860.0), tile(210.0, 860.0), tile(0.0, 740.0)]);
-        assert_eq!(r, [0.0, 0.0, 1600.0, 738.0].map(|v: f64| v).to_vec().try_into().unwrap_or(r));
-        // a column of tiles down the right edge
-        let r = without_tile_strip(stage, &[tile(1400.0, 100.0), tile(1400.0, 230.0)]);
-        assert_eq!(r[2], 1398.0);
-        // a full-height column down the right edge cuts the width only (not the height)
+        // a row of four tiles along the bottom, starting at y=860
+        let row: Vec<Tile> = (0..4).map(|i| tile(210.0 * i as f64, 860.0)).collect();
+        assert_eq!(without_tile_strip(stage, &row), [0.0, 0.0, 1600.0, 858.0]);
+        // a full-height column down the right edge cuts the width only
         let column: Vec<Tile> = (0..5).map(|i| tile(1400.0, 100.0 + 200.0 * i as f64)).collect();
         assert_eq!(without_tile_strip(stage, &column), [0.0, 0.0, 1398.0, 1000.0]);
         // no strip: unchanged
-        assert_eq!(without_tile_strip(stage, &[tile(300.0, 100.0)]), stage);
+        assert_eq!(without_tile_strip(stage, &[tile(300.0, 100.0), tile(600.0, 100.0)]), stage);
+    }
+
+    #[test]
+    fn two_rows_along_the_bottom_never_cut_the_width() {
+        // 13 people in two rows under a wide share: tiles reach the right edge, but they are rows.
+        let tile = |x: f64, y: f64| Tile { name: "x".into(), classes: HashSet::new(), area: 0.0, rect: [x, y, 220.0, 130.0] };
+        let stage = [0.0, 0.0, 1650.0, 1000.0];
+        let mut tiles: Vec<Tile> = (0..7).map(|i| tile(230.0 * i as f64, 730.0)).collect();
+        tiles.extend((0..6).map(|i| tile(230.0 * i as f64, 865.0)));
+        let r = without_tile_strip(stage, &tiles);
+        assert_eq!(r[2], 1650.0, "full width kept");
+        assert_eq!(r[3], 728.0, "cut above the first row");
     }
 
     #[test]
