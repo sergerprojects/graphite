@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.11
+- Speaker names now work in a real group call: the speaking marker is found on the tile's outer wrapper, and a presenter's video tile and "Presenting" box count as one person.
+- A notice while transcribing when macOS has not allowed Accessibility or Screen Recording (names and snapshots need them), with a Fix button.
+- A capture log (`~/Library/Logs/Graphite/capture.log`, included in Copy diagnostics) that says what names and snapshots are doing.
+
 ## 0.9.10
 - The update check no longer uses GitHub's rate-limited API, so it works on shared office networks.
 
