@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.15
+- Live names: a line is named at once when the call app marks one person for nearly all of that audio, instead of waiting for a second sighting of the voice.
+
 ## 0.9.14
 - Snapshots: a bottom row of people no longer cuts the right side off the shared slide. Only a lined-up row or column of tiles counts as a strip.
 
