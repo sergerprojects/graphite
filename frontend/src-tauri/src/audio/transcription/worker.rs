@@ -173,12 +173,15 @@ pub fn start_transcription_task<R: Runtime>(
                                     chunk_speaker = name;
                                 }
                             } else if chunk_speaker.starts_with("Speaker ") {
-                                if let Some(name) = crate::capture::names::live_name_for(&chunk_speaker) {
-                                    crate::capture::names::announce_voice_name(&app_clone, &chunk_speaker, &name);
+                                // The call app's marker for this very audio is the best evidence; a
+                                // voice that sounds like someone seen before is the fallback.
+                                let voice = chunk_speaker.clone();
+                                if let Some(name) = crate::capture::names::live_name_for_chunk(chunk_duration) {
+                                    crate::capture::names::note_voice_is(&voice, &name);
+                                    crate::capture::names::announce_voice_name(&app_clone, &voice, &name);
                                     chunk_speaker = name;
-                                } else if let Some(name) = crate::capture::names::live_name_for_chunk(chunk_duration) {
-                                    // Not enough sightings of this voice yet, but the call app marked
-                                    // one person for nearly all of this audio: name this line now.
+                                } else if let Some(name) = crate::capture::names::live_name_for(&voice) {
+                                    crate::capture::names::announce_voice_name(&app_clone, &voice, &name);
                                     chunk_speaker = name;
                                 }
                             }

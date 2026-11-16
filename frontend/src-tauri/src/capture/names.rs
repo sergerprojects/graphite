@@ -39,6 +39,8 @@ struct Live {
     mine: HashMap<String, u32>,
     /// Times a name was lit while a remote voice was talking.
     remote: HashMap<String, u32>,
+    /// Everyone the call app lists, as it last said.
+    roster: Vec<String>,
     /// Voices whose name has already been announced to the screen.
     announced: std::collections::HashSet<String>,
 }
@@ -48,6 +50,11 @@ static LIVE: Mutex<Option<Live>> = Mutex::new(None);
 fn with_live<R>(f: impl FnOnce(&mut Live) -> R) -> R {
     let mut g = LIVE.lock().unwrap_or_else(|e| e.into_inner());
     f(g.get_or_insert_with(Live::default))
+}
+
+/// Names the call app lists right now (for the "Who's who" choices).
+pub fn live_roster() -> Vec<String> {
+    with_live(|l| l.roster.clone())
 }
 
 fn live_reset() {
@@ -117,6 +124,16 @@ pub fn announce_voice_name<R: tauri::Runtime>(app: &AppHandle<R>, voice: &str, n
         use tauri::Emitter;
         let _ = app.emit("speaker-auto-named", serde_json::json!({ "label": voice, "name": name }));
     }
+}
+
+/// The call app's marker says this voice is `name` (for this audio): count it toward the voice.
+pub fn note_voice_is(voice: &str, name: &str) {
+    with_live(|l| {
+        if !is_me(l, name) {
+            *l.remote.entry(name.to_string()).or_default() += 1;
+            *l.per_voice.entry(voice.to_string()).or_default().entry(name.to_string()).or_default() += 1;
+        }
+    });
 }
 
 /// A remote voice ("Speaker 2") just produced a line. Returns the real name once that
@@ -205,6 +222,7 @@ async fn run(app: AppHandle<Wry>) {
                 dirty = true;
             }
         }
+        with_live(|l| l.roster = roster.clone());
         delay = FAST;
         if let Some(t) = clock::stream_now() {
             samples.push(Sample { t, speaking });

@@ -68,6 +68,15 @@ function cleanStopWords(text: string): string {
     return cleanedText.replace(/\s+/g, ' ').trim();
 }
 
+// A steady colour for each person's name: the same name always gets the same colour.
+const NAME_COLORS = ['#d97706', '#7c9a1e', '#2563eb', '#9333ea', '#0d9488', '#db2777', '#b45309', '#4f46e5'];
+function speakerColor(name: string): string {
+    if (/^(Speaker \d+|Others)$/.test(name)) return '#6b7280';
+    let h = 0;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return NAME_COLORS[h % NAME_COLORS.length];
+}
+
 // Memoized transcript segment component
 const TranscriptSegment = memo(function TranscriptSegment({
     id,
@@ -101,60 +110,58 @@ const TranscriptSegment = memo(function TranscriptSegment({
     };
     const displayText = cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
 
+    const mine = rawSpeaker === 'You';
+    const bubble = mine
+        ? 'bg-lime-100 text-gray-900'
+        : isStreaming
+            ? 'bg-gray-100 border border-gray-200 text-gray-800'
+            : 'bg-stone-200/70 text-gray-900';
+
     return (
-        <div id={`segment-${id}`} className="group mb-3">
-            <div className="flex items-start gap-2">
+        <div id={`segment-${id}`} className={`group mb-1.5 flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+            {speaker && !mine && !renaming && (
+                <span
+                    className={`mb-0.5 mt-2 text-xs font-semibold ${onRename ? 'cursor-pointer hover:underline' : ''}`}
+                    style={{ color: speakerColor(speaker) }}
+                    title={onRename ? 'Click to rename this speaker' : undefined}
+                    onClick={() => {
+                        if (onRename && rawSpeaker) {
+                            setDraft(rawSpeaker);
+                            setRenaming(true);
+                        }
+                    }}
+                >
+                    {speaker}
+                </span>
+            )}
+            {renaming && (
+                <input
+                    autoFocus
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onBlur={finishRename}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') finishRename();
+                        if (e.key === 'Escape') setRenaming(false);
+                    }}
+                    className="mb-0.5 w-40 rounded border border-gray-300 px-1.5 py-0.5 text-xs outline-none focus:border-blue-500"
+                    aria-label="Speaker name"
+                />
+            )}
+            <div className={`flex max-w-[92%] items-center gap-1.5 ${mine ? 'flex-row-reverse' : ''}`}>
                 <Tooltip>
-                    <TooltipTrigger>
-                        <span className="text-xs text-gray-400 mt-1 flex-shrink-0 min-w-[50px]">
-                            {formatRecordingTime(timestamp)}
-                        </span>
+                    <TooltipTrigger asChild>
+                        <p className={`rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed ${bubble}`}>{displayText}</p>
                     </TooltipTrigger>
                     <TooltipContent>
+                        {formatRecordingTime(timestamp)}
                         {confidence !== undefined && showConfidence && (
                             <ConfidenceIndicator confidence={confidence} showIndicator={showConfidence} />
                         )}
                     </TooltipContent>
                 </Tooltip>
-                <div className="flex-1">
-                    {speaker && !renaming && (
-                        <span
-                            className={`inline-block mb-0.5 px-1.5 py-0.5 rounded text-xs font-medium ${speaker === 'You' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'} ${onRename && speaker !== 'You' ? 'cursor-pointer hover:bg-gray-200' : ''}`}
-                            title={onRename && speaker !== 'You' ? 'Click to rename this speaker' : undefined}
-                            onClick={() => {
-                                if (onRename && speaker !== 'You' && rawSpeaker) {
-                                    setDraft(rawSpeaker);
-                                    setRenaming(true);
-                                }
-                            }}
-                        >
-                            {speaker}
-                        </span>
-                    )}
-                    {renaming && (
-                        <input
-                            autoFocus
-                            value={draft}
-                            onChange={e => setDraft(e.target.value)}
-                            onBlur={finishRename}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter') finishRename();
-                                if (e.key === 'Escape') setRenaming(false);
-                            }}
-                            className="mb-0.5 w-40 rounded border border-gray-300 px-1.5 py-0.5 text-xs outline-none focus:border-blue-500"
-                            aria-label="Speaker name"
-                        />
-                    )}
-                    {isStreaming ? (
-                        <div className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
-                            <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>
-                        </div>
-                    ) : (
-                        <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>
-                    )}
-                </div>
                 {!isStreaming && (
-                    <div className="flex flex-shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <div className="flex flex-shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                         <button
                             className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                             aria-label="Copy this line"

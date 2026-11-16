@@ -7,6 +7,7 @@ import { ButtonGroup } from '@/components/ui/button-group';
 import { ChevronUp, Copy, GlobeIcon, Minus } from 'lucide-react';
 import { MeetingHeader } from '@/components/Live/MeetingHeader';
 import { CaptureNotice } from '@/components/Live/CaptureNotice';
+import { getLiveRoster } from '@/lib/capture';
 import { LiveChat } from '@/components/Live/LiveChat';
 import { ImageStrip } from '@/components/Images/ImageStrip';
 import { NotesBox } from '@/components/Live/NotesBox';
@@ -73,6 +74,19 @@ export function TranscriptPanel({
   // Header context (title, who is invited) + free-form notes for the live recording.
   const [event, setEvent] = useState<CalendarEvent | null>(null);
   const [choices, setChoices] = useState<CalendarEvent[]>([]);
+  // Everyone the call app shows (their real display names): the best choices for "who is who".
+  const [callRoster, setCallRoster] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isRecording) return;
+    let alive = true;
+    const poll = () => getLiveRoster().then(r => alive && setCallRoster(r)).catch(() => {});
+    poll();
+    const t = setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [isRecording]);
   const [notes, setNotes] = useState('');
   const [showTranscript, setShowTranscript] = useState(false);
   const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
@@ -325,7 +339,7 @@ export function TranscriptPanel({
                       {speakerLabels.map(label => (
                         <label key={label} className="inline-flex items-center gap-1.5">
                           <span>{label}</span>
-                          {others.length > 0 ? (
+                          {others.length > 0 || callRoster.length > 0 ? (
                             <select
                               value={speakerNames[label] ?? ''}
                               onChange={e => setSpeakerNames(m => ({ ...m, [label]: e.target.value }))}
@@ -333,9 +347,9 @@ export function TranscriptPanel({
                               aria-label={`Who is ${label}`}
                             >
                               <option value="">Not sure</option>
-                              {others.map(a => (
-                                <option key={a.email} value={a.name}>
-                                  {a.name}
+                              {[...new Set([...callRoster, ...others.map(a => a.name)])].map(name => (
+                                <option key={name} value={name}>
+                                  {name}
                                 </option>
                               ))}
                             </select>

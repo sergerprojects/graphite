@@ -225,6 +225,12 @@ pub async fn capture_window_test(_app: String) -> Result<String, String> {
     Err("only on macOS".into())
 }
 
+/// People the call app lists on screen right now.
+#[tauri::command]
+pub async fn capture_live_roster() -> Vec<String> {
+    names::live_roster()
+}
+
 /// Delete the voices Graphite remembered from earlier meetings (saved only on this Mac).
 #[tauri::command]
 pub async fn forget_saved_voices() -> Result<(), String> {

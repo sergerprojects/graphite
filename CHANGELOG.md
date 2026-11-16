@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.16
+- Transcript as chat bubbles: your lines on the right, everyone else's on the left under a coloured name.
+- Live naming trusts the call app's marker for each stretch of audio first, so people who speak only once are named too; a voice that sounds like someone seen earlier is the fallback.
+- Who's who offers the names the call app shows (not just calendar handles).
+
 ## 0.9.15
 - Live names: a line is named at once when the call app marks one person for nearly all of that audio, instead of waiting for a second sighting of the voice.
 

@@ -935,6 +935,7 @@ pub fn run() {
             capture::capture_window_test,
             capture::capture_speakers_test,
             capture::forget_saved_voices,
+            capture::capture_live_roster,
             beta::get_remember_voices,
             beta::set_remember_voices,
             beta::claude_code_status,

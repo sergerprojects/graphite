@@ -62,3 +62,6 @@ export const testSpeakers = () => invoke<string>('capture_speakers_test');
 
 /** Forget the voices remembered from earlier meetings. */
 export const forgetSavedVoices = () => invoke<void>('forget_saved_voices');
+
+/** People the call app lists on screen right now. */
+export const getLiveRoster = () => invoke<string[]>('capture_live_roster');
