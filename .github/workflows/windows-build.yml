@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -68,3 +70,12 @@ jobs:
         with:
           name: Graphite-windows-x64-setup
           path: dist/Graphite-windows-x64-setup.exe
+
+      # Keep the Windows beta download current: the "windows-beta" pre-release always holds
+      # the installer from the newest build of main. (Mac users never see it: it is not "latest".)
+      - name: Update the windows-beta download
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload windows-beta dist/Graphite-windows-x64-setup.exe --clobber

@@ -27,7 +27,7 @@ Graphite opens and walks you through three screens: download the speech model (a
 irm https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.ps1 | iex
 ```
 
-It records, transcribes, takes notes, summarizes and chats like the Mac version. Speaker names from the call app and screen snapshots are Mac-only for now. Windows may show a SmartScreen warning because the installer is not signed: choose More info, then Run anyway. Remove it with `scripts\uninstall.ps1`.
+It records, transcribes, takes notes, summarizes and chats like the Mac version. Speaker names from the call app and screen snapshots are Mac-only for now. Windows may show a SmartScreen warning because the installer is not signed: choose More info, then Run anyway. Remove it with `scripts\uninstall.ps1`. The installer is also on the [windows-beta release](https://github.com/sergerprojects/graphite/releases/tag/windows-beta).
 
 Prefer to download it yourself? Get `Graphite-macos-arm64.zip` from the [latest release](https://github.com/sergerprojects/graphite/releases/latest), unzip it into Applications, then run `xattr -cr /Applications/Graphite.app` before opening it.
 
