@@ -14,6 +14,9 @@ use tauri::{AppHandle, Wry};
 const GONE_AFTER: Duration = Duration::from_secs(5);
 /// Tab still there but no longer using the mic: give a muted call time to prove itself.
 const IDLE_AFTER: Duration = Duration::from_secs(20);
+/// Meet's own "You left the meeting" page is on screen: just long enough to ignore one
+/// glance, short enough to feel instant (Rejoin brings the mark back and cancels this).
+const LEFT_AFTER: Duration = Duration::from_secs(3);
 const POLL: Duration = Duration::from_secs(2);
 
 /// What the tab strip says about Google Meet right now.
@@ -23,6 +26,16 @@ pub struct MeetTabs {
     pub call_tab: bool,
     /// That tab carries Chrome's camera/microphone recording mark.
     pub in_use: bool,
+    /// Meet's page itself says the call is over ("You left the meeting", "removed", "ended").
+    pub left_page: bool,
+}
+
+/// Does this text come from Meet's end-of-call page?
+pub fn is_left_text(t: &str) -> bool {
+    let t = t.to_lowercase();
+    ["you left the meeting", "removed you from the meeting", "you've been removed from the meeting", "this meeting has ended", "the meeting has ended", "your meeting has ended"]
+        .iter()
+        .any(|p| t.contains(p))
 }
 
 pub fn read_tabs(titles: &[String]) -> MeetTabs {
@@ -43,6 +56,7 @@ pub struct Watch {
     seen: bool,
     gone_since: Option<Instant>,
     idle_since: Option<Instant>,
+    left_since: Option<Instant>,
 }
 
 impl Watch {
@@ -52,10 +66,19 @@ impl Watch {
             self.seen = true;
             self.gone_since = None;
             self.idle_since = None;
+            self.left_since = None;
             return false;
         }
         if !self.seen {
             return false;
+        }
+        if tabs.left_page && tabs.call_tab {
+            let since = *self.left_since.get_or_insert(now);
+            if now.duration_since(since) >= LEFT_AFTER {
+                return true;
+            }
+        } else {
+            self.left_since = None;
         }
         if !tabs.call_tab {
             self.idle_since = None;
@@ -102,7 +125,20 @@ async fn run(app: AppHandle<Wry>) {
                 }
             });
         }
-        if watch.observe(read_tabs(&titles), Instant::now()) {
+        let mut tabs = read_tabs(&titles);
+        if tabs.call_tab && !tabs.in_use {
+            // Ambiguous: a muted call, or the call is over and Meet shows its end page.
+            // Read the page itself, deeper than the tab strip, to tell which.
+            let deep = Limits { max_depth: 40, max_nodes: 20_000, max_time: Duration::from_millis(1_500) };
+            for w in &ax::snapshot_windows(pid, false, &deep) {
+                w.walk(&mut |n| {
+                    if is_left_text(&n.title) || is_left_text(&n.value) || is_left_text(&n.desc) {
+                        tabs.left_page = true;
+                    }
+                });
+            }
+        }
+        if watch.observe(tabs, Instant::now()) {
             log::info!("Meet call ended: stopping the meeting");
             if let Err(e) = crate::tray::stop_recording_and_save(&app).await {
                 log::warn!("Meet call ended but stopping failed: {e}");
@@ -123,9 +159,39 @@ mod tests {
 
     #[test]
     fn reads_the_call_tab_and_its_mark() {
-        assert_eq!(tabs(&[LIVE, "Inbox (3)"]), MeetTabs { call_tab: true, in_use: true });
-        assert_eq!(tabs(&["Meet - abc-defg-hij"]), MeetTabs { call_tab: true, in_use: false });
+        assert_eq!(tabs(&[LIVE, "Inbox (3)"]), MeetTabs { call_tab: true, in_use: true, left_page: false });
+        assert_eq!(tabs(&["Meet - abc-defg-hij"]), MeetTabs { call_tab: true, in_use: false, left_page: false });
         assert_eq!(tabs(&["Google Meet - Pinned", "Docs"]), MeetTabs::default());
+    }
+
+    #[test]
+    fn meets_end_page_text_is_recognised() {
+        assert!(is_left_text("You left the meeting"));
+        assert!(is_left_text("You've been removed from the meeting"));
+        assert!(is_left_text("This meeting has ended"));
+        assert!(!is_left_text("Meeting details"));
+        assert!(!is_left_text("Leave call"));
+    }
+
+    #[test]
+    fn the_end_page_stops_it_in_seconds_not_twenty() {
+        let mut w = Watch::default();
+        let t0 = Instant::now();
+        w.observe(MeetTabs { call_tab: true, in_use: true, left_page: false }, t0);
+        let over = MeetTabs { call_tab: true, in_use: false, left_page: true };
+        assert!(!w.observe(over, t0 + Duration::from_secs(2)));
+        assert!(w.observe(over, t0 + Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn rejoining_from_the_end_page_cancels_it() {
+        let mut w = Watch::default();
+        let t0 = Instant::now();
+        w.observe(MeetTabs { call_tab: true, in_use: true, left_page: false }, t0);
+        let over = MeetTabs { call_tab: true, in_use: false, left_page: true };
+        assert!(!w.observe(over, t0 + Duration::from_secs(2)));
+        assert!(!w.observe(MeetTabs { call_tab: true, in_use: true, left_page: false }, t0 + Duration::from_secs(4)));
+        assert!(!w.observe(over, t0 + Duration::from_secs(5)));
     }
 
     #[test]
@@ -140,7 +206,7 @@ mod tests {
     fn closing_the_tab_ends_it_after_a_short_wait() {
         let mut w = Watch::default();
         let t0 = Instant::now();
-        let live = MeetTabs { call_tab: true, in_use: true };
+        let live = MeetTabs { call_tab: true, in_use: true, left_page: false };
         assert!(!w.observe(live, t0));
         assert!(!w.observe(MeetTabs::default(), t0 + Duration::from_secs(2)));
         assert!(!w.observe(MeetTabs::default(), t0 + Duration::from_secs(5)));
@@ -151,7 +217,7 @@ mod tests {
     fn switching_tabs_or_a_blip_does_not_end_it() {
         let mut w = Watch::default();
         let t0 = Instant::now();
-        let live = MeetTabs { call_tab: true, in_use: true };
+        let live = MeetTabs { call_tab: true, in_use: true, left_page: false };
         w.observe(live, t0);
         assert!(!w.observe(MeetTabs::default(), t0 + Duration::from_secs(2)));
         assert!(!w.observe(live, t0 + Duration::from_secs(4))); // back
@@ -163,8 +229,8 @@ mod tests {
     fn a_lingering_tab_without_the_mark_ends_it_only_after_longer() {
         let mut w = Watch::default();
         let t0 = Instant::now();
-        w.observe(MeetTabs { call_tab: true, in_use: true }, t0);
-        let lingering = MeetTabs { call_tab: true, in_use: false };
+        w.observe(MeetTabs { call_tab: true, in_use: true, left_page: false }, t0);
+        let lingering = MeetTabs { call_tab: true, in_use: false, left_page: false };
         assert!(!w.observe(lingering, t0 + Duration::from_secs(3)));
         assert!(!w.observe(lingering, t0 + Duration::from_secs(19)));
         assert!(w.observe(lingering, t0 + Duration::from_secs(24)));

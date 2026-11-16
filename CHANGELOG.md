@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.20
+- Leaving a Meet call ends the meeting within a few seconds: Graphite now reads Meet's own "You left the meeting" page instead of waiting 20 seconds for Chrome's recording mark to disappear.
+
 ## Unreleased
 - Windows preview: the app now builds on Windows (CI builds an installer on every push), finds Claude Code and Python the Windows way, and hides the Mac-only name and snapshot settings there. PowerShell install and uninstall scripts added. Not yet tested on a real Windows machine.
 
