@@ -317,6 +317,15 @@ impl SummaryService {
         detection.language
     }
 
+    /// The notes the person typed during the meeting (`notes.md` in the meeting's folder).
+    async fn read_user_notes(pool: &SqlitePool, meeting_id: &str) -> Option<String> {
+        let meeting = MeetingsRepository::get_meeting_metadata(pool, meeting_id).await.ok().flatten()?;
+        let folder = meeting.folder_path.filter(|p| !p.trim().is_empty())?;
+        let text = std::fs::read_to_string(Path::new(&folder).join("notes.md")).ok()?;
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.chars().take(8000).collect())
+    }
+
     /// Processes transcript in the background and generates summary
     ///
     /// This function is designed to be spawned as an async task and does not block
@@ -500,6 +509,9 @@ impl SummaryService {
             }
         };
         let template_fingerprint = template_cache_fingerprint(&template);
+
+        // The notes the person typed during the meeting blend into the generated notes.
+        let custom_prompt = merge_notes_into_prompt(&custom_prompt, Self::read_user_notes(&pool, &meeting_id).await.as_deref());
 
         let cache_source = build_summary_cache_source(
             &text,
@@ -1106,5 +1118,41 @@ mod tests {
     fn test_extract_cached_english_from_malformed_json_errors() {
         let raw = r#"{ not valid json"#;
         assert!(extract_cached_english_markdown(raw, &sample_cache_source(), Some("de")).is_err());
+    }
+}
+
+/// Add the person's own notes to the context given to the model, with instructions to
+/// keep them and build on them rather than write a separate summary beside them.
+pub fn merge_notes_into_prompt(custom_prompt: &str, notes: Option<&str>) -> String {
+    let Some(notes) = notes.map(str::trim).filter(|n| !n.is_empty()) else {
+        return custom_prompt.to_string();
+    };
+    let mut out = custom_prompt.trim().to_string();
+    if !out.is_empty() {
+        out.push_str("\n\n");
+    }
+    out.push_str(
+        "The person took these notes during the meeting (markdown). They show what mattered to them. \
+Keep their headings and points, in their order, as the backbone of the final notes: expand each point with the \
+details from the transcript (decisions, owners, numbers, dates), and add anything important they missed under \
+the closest heading. Do not drop or reword away any of their points.\n\n<my_notes>\n",
+    );
+    out.push_str(notes);
+    out.push_str("\n</my_notes>");
+    out
+}
+
+#[cfg(test)]
+mod notes_merge_tests {
+    use super::merge_notes_into_prompt;
+
+    #[test]
+    fn notes_join_the_context_and_empty_ones_change_nothing() {
+        assert_eq!(merge_notes_into_prompt("ctx", None), "ctx");
+        assert_eq!(merge_notes_into_prompt("ctx", Some("  \n ")), "ctx");
+        let merged = merge_notes_into_prompt("ctx", Some("# Plan\n- ship"));
+        assert!(merged.starts_with("ctx\n\n"));
+        assert!(merged.contains("<my_notes>\n# Plan\n- ship\n</my_notes>"));
+        assert!(merge_notes_into_prompt("", Some("a")).starts_with("The person took these notes"));
     }
 }

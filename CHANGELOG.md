@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.17
+- Notes feel like Notion: the same block shortcuts (⌘⌥1/2/3 headings, ⌘⇧4 to-do, ⌘⇧7 numbered, ⌘⇧8 bullets, ⌘⇧9 toggle, ⌘B/I/U/E, ⌘K link), a short "/" menu with only what a meeting needs, no side handles.
+- Summaries now build on what you typed: your headings and points stay as the backbone and are expanded from the transcript, instead of a separate summary beside them. "My notes" shows alone only until a summary exists.
+
 ## 0.9.16
 - Transcript as chat bubbles: your lines on the right, everyone else's on the left under a coloured name.
 - Live naming trusts the call app's marker for each stretch of audio first, so people who speak only once are named too; a voice that sounds like someone seen earlier is the fallback.

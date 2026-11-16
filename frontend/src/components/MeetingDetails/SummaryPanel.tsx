@@ -301,7 +301,8 @@ export function SummaryPanel({
         <div className="flex-1 overflow-y-auto overflow-x-auto min-h-0">
           <div className="p-6 w-full">
             <div className="mb-3"><FolderChip meetingId={meeting.id} /></div>
-            <MyNotes folder={meeting.folder_path} />
+            {/* Once the summary exists your notes are already in it; show them alone only before that. */}
+            {!aiSummary && <MyNotes folder={meeting.folder_path} />}
             <BlockNoteSummaryView
               ref={summaryRef}
               summaryData={aiSummary}

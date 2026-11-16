@@ -44,7 +44,11 @@ export function AppShortcuts() {
         e.preventDefault();
         fn();
       };
-      if (key === 'k') run(() => setOpen(o => !o));
+      // In the notes editor ⌘K makes a link (as in Notion); the palette opens everywhere else.
+      const inNotes = (e.target as HTMLElement | null)?.closest?.('.notes-editor');
+      if (key === 'k') {
+        if (!inNotes) run(() => setOpen(o => !o));
+      }
       else if (key === 'n' && !e.altKey && !e.shiftKey) run(() => !isRecording && startRecording());
       else if (key === '.') run(() => isRecording && stopRecording());
       else if (key === ',') run(() => router.push('/settings'));
