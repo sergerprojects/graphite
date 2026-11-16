@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.21
+- Big calls: Meet's header clock ("4:03 PM") was read as a person called "PM" and a wrapper around the whole grid inherited the speaking marker, so everything said was filed under "PM". The clock is ignored and wrapper boxes that hold other tiles are no longer treated as people.
+
 ## 0.9.20
 - Leaving a Meet call ends the meeting within a few seconds: Graphite now reads Meet's own "You left the meeting" page instead of waiting 20 seconds for Chrome's recording mark to disappear.
 

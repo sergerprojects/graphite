@@ -68,6 +68,10 @@ pub fn looks_like_a_name(t: &str) -> bool {
     if words.iter().any(|w| UI_WORDS.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()))) {
         return false;
     }
+    // The clock in Meet's header ("4:03 PM") is text too, never a person.
+    if words.iter().any(|w| matches!(w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()), "am" | "pm")) {
+        return false;
+    }
     // "Copper cable upgrade" is text from a slide: most words of a name start with a capital.
     let caps = words.iter().filter(|w| w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)).count();
     caps * 2 >= words.len() && caps >= 1
@@ -174,6 +178,13 @@ pub fn meet_tiles(page: &Node) -> Vec<Tile> {
             None => tiles.push(tile),
         }
     }
+    // A "tile" that holds other tiles is a container (a wrapper around the whole grid that
+    // carries every tile's classes, speaking marker included): never a person.
+    let rects: Vec<[f64; 4]> = tiles.iter().map(|t| t.rect).collect();
+    let encloses = |o: &[f64; 4], i: &[f64; 4]| {
+        o != i && i[0] >= o[0] - 2.0 && i[1] >= o[1] - 2.0 && i[0] + i[2] <= o[0] + o[2] + 2.0 && i[1] + i[3] <= o[1] + o[3] + 2.0
+    };
+    tiles.retain(|t| !rects.iter().any(|r| encloses(&t.rect, r)));
     tiles.sort_by(|a, b| a.name.cmp(&b.name));
     tiles
 }
@@ -344,6 +355,32 @@ mod tests {
         assert_eq!(without_tile_strip(stage, &column), [0.0, 0.0, 1398.0, 1000.0]);
         // no strip: unchanged
         assert_eq!(without_tile_strip(stage, &[tile(300.0, 100.0), tile(600.0, 100.0)]), stage);
+    }
+
+    #[test]
+    fn the_clock_is_not_a_person() {
+        assert!(!looks_like_a_name("PM"));
+        assert!(!looks_like_a_name("4:03 PM"));
+        assert!(!looks_like_a_name("AM"));
+        assert!(looks_like_a_name("Pam Moore"));
+    }
+
+    #[test]
+    fn a_wrapper_around_the_whole_grid_is_not_a_tile() {
+        fn text(v: &str, f: [f64; 4]) -> Node {
+            Node { role: "AXStaticText".into(), value: v.into(), frame: Some(f), ..Default::default() }
+        }
+        fn boxed(f: [f64; 4], kids: Vec<Node>, classes: &[&str]) -> Node {
+            Node { role: "AXGroup".into(), frame: Some(f), dom_classes: classes.iter().map(|c| c.to_string()).collect(), children: kids, ..Default::default() }
+        }
+        let a = boxed([0.0, 100.0, 300.0, 200.0], vec![text("Alex Morgan", [10.0, 270.0, 100.0, 20.0])], &["v5h6Xc"]);
+        let b = boxed([320.0, 100.0, 300.0, 200.0], vec![text("Sam Lee", [330.0, 270.0, 80.0, 20.0])], &[]);
+        // A wide wrapper holding both tiles, with a label that passed the name filter.
+        let wrapper = boxed([0.0, 0.0, 640.0, 400.0], vec![text("Zed Holder", [10.0, 20.0, 80.0, 20.0]), a, b], &["wrapper"]);
+        let page = boxed([0.0, 0.0, 700.0, 500.0], vec![wrapper], &[]);
+        let names: Vec<String> = meet_tiles(&page).into_iter().map(|t| t.name).collect();
+        assert!(names.contains(&"Alex Morgan".to_string()) && names.contains(&"Sam Lee".to_string()), "{names:?}");
+        assert!(!names.contains(&"Zed Holder".to_string()), "container tile must be dropped: {names:?}");
     }
 
     #[test]
