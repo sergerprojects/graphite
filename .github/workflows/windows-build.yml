@@ -38,6 +38,12 @@ jobs:
           mkdir -p frontend/src-tauri/binaries
           cp target/release/llama-helper.exe frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
 
+      # ort-sys copies the ONNX Runtime DLLs next to the build output and into "examples"
+      # and "deps" there; on a fresh runner those folders are missing and the copy panics.
+      - name: Pre-create folders ort-sys copies into
+        shell: bash
+        run: mkdir -p target/release/examples target/release/deps target/release/build/examples target/release/build/deps
+
       - name: Install frontend packages
         working-directory: frontend
         run: pnpm install --frozen-lockfile
