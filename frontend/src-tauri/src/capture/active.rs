@@ -358,6 +358,18 @@ mod tests {
     }
 
     #[test]
+    fn real_thirteen_person_layout_keeps_the_full_width() {
+        // Rectangles from a live 13-person Meet call with a share: two rows of tiles under the share.
+        let t = |x: f64, y: f64| Tile { name: "x".into(), classes: HashSet::new(), area: 0.0, rect: [x, y, 226.0, 130.0] };
+        let stage = [-1167.0, -1247.0, 1652.0, 1053.0];
+        let mut tiles: Vec<Tile> = [-1167.0, -929.0, -691.0, -453.0, -216.0, 22.0, 260.0].iter().map(|x| t(*x, -463.0)).collect();
+        tiles.extend([-1167.0, -929.0, -691.0, -453.0, -216.0, 260.0].iter().map(|x| t(*x, -322.0)));
+        let r = without_tile_strip(stage, &tiles);
+        assert_eq!(r[2], stage[2], "width kept");
+        assert_eq!(r[3], -465.0 - stage[1], "cut just above the first row of people");
+    }
+
+    #[test]
     fn finds_tiles_and_names() {
         let p = page(vec![tile(0.0, 0.0, "Ana Park", &["JHK7jb"]), tile(430.0, 0.0, "Ben Cho", &["JHK7jb"]), tile(860.0, 0.0, "Dev Patel", &["JHK7jb"])]);
         let names: Vec<String> = meet_tiles(&p).into_iter().map(|t| t.name).collect();

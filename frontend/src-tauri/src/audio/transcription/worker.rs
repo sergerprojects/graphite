@@ -176,6 +176,10 @@ pub fn start_transcription_task<R: Runtime>(
                                 if let Some(name) = crate::capture::names::live_name_for(&chunk_speaker) {
                                     crate::capture::names::announce_voice_name(&app_clone, &chunk_speaker, &name);
                                     chunk_speaker = name;
+                                } else if let Some(name) = crate::capture::names::live_name_for_chunk(chunk_duration) {
+                                    // Not enough sightings of this voice yet, but the call app marked
+                                    // one person for nearly all of this audio: name this line now.
+                                    chunk_speaker = name;
                                 }
                             }
 
