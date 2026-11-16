@@ -27,6 +27,8 @@ pub struct Tile {
     /// Size of the tile on screen; when a name appears twice (their video tile and the
     /// "Name (Presenting)" box) the smaller one is the video tile.
     pub area: f64,
+    /// x, y, width, height in screen points.
+    pub rect: [f64; 4],
 }
 
 fn rect_ok(f: &[f64; 4]) -> bool {
@@ -50,6 +52,27 @@ fn plausible_name(t: &str) -> bool {
     (2..=60).contains(&n) && t.chars().any(|c| c.is_alphabetic()) && !t.contains('\n')
 }
 
+/// Words that mark interface text, never a person.
+const UI_WORDS: &[&str] = &[
+    "microphone", "camera", "settings", "audio", "video", "effects", "reactions", "captions", "caption", "present",
+    "presenting", "presentation", "share", "pin", "unpin", "mute", "unmute", "raise", "leave", "more", "options", "turn", "meeting",
+    "call", "chat", "people", "activities", "host", "controls", "background", "layout", "frame", "tile", "spotlight",
+];
+
+/// Does this label look like a person's name (rather than a button or text from a shared screen)?
+pub fn looks_like_a_name(t: &str) -> bool {
+    let words: Vec<&str> = t.split_whitespace().collect();
+    if words.is_empty() || words.len() > 5 || !plausible_name(t) {
+        return false;
+    }
+    if words.iter().any(|w| UI_WORDS.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()))) {
+        return false;
+    }
+    // "Copper cable upgrade" is text from a slide: most words of a name start with a capital.
+    let caps = words.iter().filter(|w| w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)).count();
+    caps * 2 >= words.len() && caps >= 1
+}
+
 fn all_classes(n: &Node, out: &mut HashSet<String>) {
     out.extend(n.dom_classes.iter().cloned());
     for c in &n.children {
@@ -57,12 +80,31 @@ fn all_classes(n: &Node, out: &mut HashSet<String>) {
     }
 }
 
+/// The shared content's area: the stage minus the strip of people's tiles beside or
+/// under it (their moving video would otherwise end up in every picture).
+pub fn without_tile_strip(stage: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
+    let mut out = stage;
+    let (mid_y, right_x) = (stage[1] + stage[3] * 0.5, stage[0] + stage[2] * 0.7);
+    let inside = |t: &Tile| {
+        let cx = t.rect[0] + t.rect[2] / 2.0;
+        let cy = t.rect[1] + t.rect[3] / 2.0;
+        cx >= stage[0] && cx <= stage[0] + stage[2] && cy >= stage[1] && cy <= stage[1] + stage[3]
+    };
+    if let Some(top) = tiles.iter().filter(|t| inside(t) && t.rect[1] >= mid_y).map(|t| t.rect[1]).reduce(f64::min) {
+        out[3] = (top - 2.0 - stage[1]).max(0.0);
+    }
+    if let Some(left) = tiles.iter().filter(|t| inside(t) && t.rect[0] >= right_x && t.rect[1] < mid_y).map(|t| t.rect[0]).reduce(f64::min) {
+        out[2] = (left - 2.0 - stage[0]).max(0.0);
+    }
+    out
+}
+
 /// Participant tiles of a Meet page: the smallest tile-shaped box around each name label.
 pub fn meet_tiles(page: &Node) -> Vec<Tile> {
     // (tile frame key, label, label y, tile node)
     let mut found: Vec<([i64; 4], String, f64, &Node)> = Vec::new();
     fn visit<'a>(n: &'a Node, path: &mut Vec<&'a Node>, found: &mut Vec<([i64; 4], String, f64, &'a Node)>) {
-        if n.role == "AXStaticText" && plausible_name(&n.value) {
+        if n.role == "AXStaticText" && looks_like_a_name(&plain_name(&n.value)) {
             if let Some(tf) = n.frame {
                 // nearest ancestor that looks like a tile and contains this label...
                 let near = path.iter().rposition(|a| a.frame.map(|f| rect_ok(&f) && contains(&f, &tf)).unwrap_or(false));
@@ -112,7 +154,7 @@ pub fn meet_tiles(page: &Node) -> Vec<Tile> {
         all_classes(node, &mut classes);
         let f = node.frame.unwrap_or_default();
         let name = plain_name(name);
-        let tile = Tile { name: name.clone(), classes, area: f[2] * f[3] };
+        let tile = Tile { name: name.clone(), classes, area: f[2] * f[3], rect: f };
         match tiles.iter_mut().find(|t| t.name == name) {
             Some(existing) if tile.area < existing.area => *existing = tile,
             Some(_) => {}
@@ -265,6 +307,30 @@ mod tests {
 
     fn page(tiles: Vec<Node>) -> Node {
         n("AXWebArea", "", Some([0.0, 0.0, 1700.0, 1200.0]), &[], tiles)
+    }
+
+    #[test]
+    fn labels_that_are_not_people_are_dropped() {
+        for ok in ["Ana Park", "Usman Nasir", "Dev", "Mary-Ann O'Neil", "Alex Morgan (You)"] {
+            assert!(looks_like_a_name(&plain_name(ok)), "{ok}");
+        }
+        for bad in ["Copper cable upgrade", "Audio settings", "Turn on microphone", "More options", "Pin", "Presentation"] {
+            assert!(!looks_like_a_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_strip_of_people_is_cut_off_the_shared_area() {
+        let tile = |x: f64, y: f64| Tile { name: "x".into(), classes: HashSet::new(), area: 0.0, rect: [x, y, 200.0, 120.0] };
+        // stage 1600x1000 at (0,0); a row of tiles along the bottom starting at y=860
+        let stage = [0.0, 0.0, 1600.0, 1000.0];
+        let r = without_tile_strip(stage, &[tile(0.0, 860.0), tile(210.0, 860.0), tile(0.0, 740.0)]);
+        assert_eq!(r, [0.0, 0.0, 1600.0, 738.0].map(|v: f64| v).to_vec().try_into().unwrap_or(r));
+        // a column of tiles down the right edge
+        let r = without_tile_strip(stage, &[tile(1400.0, 100.0), tile(1400.0, 230.0)]);
+        assert_eq!(r[2], 1398.0);
+        // no strip: unchanged
+        assert_eq!(without_tile_strip(stage, &[tile(300.0, 100.0)]), stage);
     }
 
     #[test]

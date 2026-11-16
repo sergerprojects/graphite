@@ -1,5 +1,6 @@
 "use client";
 
+import { invoke } from '@tauri-apps/api/core';
 import { rememberContinue } from '@/lib/continue-meeting';
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -35,16 +36,27 @@ export function TranscriptButtonGroup({
   const [showRetranscribeDialog, setShowRetranscribeDialog] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const { currentMeeting } = useSidebar();
+  const { currentMeeting, meetings } = useSidebar();
 
-  // Start another recording for this meeting (same calendar event when it has one).
+  // Start another recording for this meeting. The new transcript is joined onto it when it stops.
+  // Use the calendar event only when it is this meeting's own: with two meetings booked at
+  // once, the stored event can be the other one, and the title must stay the one you picked.
   const continueRecording = useCallback(async () => {
-    if (meetingId) rememberContinue(meetingId); // the new transcript joins this meeting when it stops
+    if (meetingId) rememberContinue(meetingId);
+    const title =
+      meetings.find(m => m.id === meetingId)?.title ||
+      (currentMeeting?.id === meetingId ? currentMeeting?.title ?? '' : '') ||
+      'Continued meeting';
     const event = meetingId ? await getEventForMeeting(meetingId) : null;
     const goHome = () => router.push('/');
-    if (event) await startRecordingForEvent(event, pathname, goHome);
-    else startRecordingWithTitle(currentMeeting?.title || 'Continued meeting', pathname, goHome);
-  }, [meetingId, pathname, router, currentMeeting]);
+    const same = event && event.summary.trim().toLowerCase() === title.trim().toLowerCase();
+    if (same) {
+      await startRecordingForEvent(event, pathname, goHome);
+    } else {
+      await invoke('calendar_set_pending_event', { event: null }).catch(() => {});
+      startRecordingWithTitle(title, pathname, goHome);
+    }
+  }, [meetingId, pathname, router, currentMeeting, meetings]);
 
   const handleRetranscribeComplete = useCallback(async () => {
     // Refetch transcripts to show the updated data

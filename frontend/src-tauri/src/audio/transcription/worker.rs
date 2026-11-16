@@ -166,6 +166,12 @@ pub fn start_transcription_task<R: Runtime>(
                             // remote voice that keeps lining up with one name gets that name.
                             if matches!(chunk.device_type, RecordingDeviceType::Microphone) {
                                 crate::capture::names::live_note_mine();
+                            } else if chunk_speaker == "Others" {
+                                // No voice labels (helper off, or too few voices): use the one
+                                // person the call app marked as speaking during this audio.
+                                if let Some(name) = crate::capture::names::live_name_for_chunk(chunk_duration) {
+                                    chunk_speaker = name;
+                                }
                             } else if chunk_speaker.starts_with("Speaker ") {
                                 if let Some(name) = crate::capture::names::live_name_for(&chunk_speaker) {
                                     chunk_speaker = name;

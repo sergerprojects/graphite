@@ -32,6 +32,8 @@ const MIN_SHARE: f64 = 0.7;
 struct Live {
     at: Option<Instant>,
     speaking: Vec<String>,
+    /// Who was marked speaking over the last half minute: (when, names).
+    history: Vec<(Instant, Vec<String>)>,
     per_voice: HashMap<String, HashMap<String, u32>>,
     /// Times a name was lit while your own microphone was the one talking.
     mine: HashMap<String, u32>,
@@ -52,8 +54,11 @@ fn live_reset() {
 
 fn live_publish(speaking: &[String]) {
     with_live(|l| {
-        l.at = Some(Instant::now());
+        let now = Instant::now();
+        l.at = Some(now);
         l.speaking = speaking.to_vec();
+        l.history.push((now, speaking.to_vec()));
+        l.history.retain(|(t, _)| now.duration_since(*t) <= Duration::from_secs(30));
     });
 }
 
@@ -76,6 +81,30 @@ pub fn live_note_mine() {
             *l.mine.entry(n).or_default() += 1;
         }
     });
+}
+
+/// Name for a stretch of call audio that has no voice label ("Others"): the one person the
+/// call app marked as speaking for nearly all of the last `secs` seconds. None when two
+/// people alternated, nobody was marked, or the marked person is you.
+pub fn live_name_for_chunk(secs: f64) -> Option<String> {
+    with_live(|l| {
+        let now = Instant::now();
+        let window = Duration::from_secs_f64(secs.clamp(1.0, 25.0) + 1.0);
+        let mut counts: HashMap<&str, u32> = HashMap::new();
+        let mut marked = 0u32;
+        for (t, who) in l.history.iter().filter(|(t, _)| now.duration_since(*t) <= window) {
+            let _ = t;
+            let others: Vec<&String> = who.iter().filter(|n| !is_me(l, n)).collect();
+            if others.len() == 1 {
+                *counts.entry(others[0].as_str()).or_default() += 1;
+                marked += 1;
+            } else if !who.is_empty() {
+                marked += 1; // several marked at once: ambiguous
+            }
+        }
+        let (name, n) = counts.into_iter().max_by_key(|(_, n)| *n)?;
+        (marked >= 3 && n as f64 / marked as f64 >= 0.8).then(|| name.to_string())
+    })
 }
 
 /// A remote voice ("Speaker 2") just produced a line. Returns the real name once that
@@ -416,9 +445,31 @@ pub async fn apply(pool: &SqlitePool, meeting_id: &str, folder: &Path) -> usize 
 mod live_tests {
     use super::*;
 
+    // The live state is one shared global: tests that touch it run one at a time.
+    static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
     // One test: the live state is shared, so keep the steps in order.
     #[test]
+    fn unlabelled_audio_takes_the_one_person_marked_for_nearly_all_of_it() {
+        let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        live_reset();
+        for _ in 0..5 {
+            live_publish(&["Ana Park".to_string()]);
+        }
+        assert_eq!(live_name_for_chunk(5.0), Some("Ana Park".to_string()));
+        live_reset();
+        for i in 0..6 {
+            live_publish(&[if i % 2 == 0 { "Ana Park" } else { "Ben Cho" }.to_string()]);
+        }
+        assert_eq!(live_name_for_chunk(5.0), None, "two people alternating is not one speaker");
+        live_reset();
+        live_publish(&["Ana Park".to_string()]);
+        assert_eq!(live_name_for_chunk(5.0), None, "one sample is not enough");
+    }
+
+    #[test]
     fn a_voice_gets_a_name_after_lining_up_and_you_are_never_given_away() {
+        let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
         live_reset();
         // Your mic runs while "Alex Morgan" is lit: that is you.
         for _ in 0..3 {

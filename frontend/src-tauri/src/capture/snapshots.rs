@@ -5,7 +5,7 @@
 
 use super::ax::{self, CallApp, Limits};
 use super::keeper::{KeepRules, Keeper};
-use super::{clock, meet, perms, screen, store};
+use super::{active, clock, meet, perms, screen, store};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Wry};
@@ -16,6 +16,18 @@ const ACTIVE: Duration = Duration::from_secs(1);
 /// The two rectangles describe the same window (screen points, a little slack).
 pub fn same_window(a: [f64; 4], b: [f64; 4]) -> bool {
     a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() <= 3.0)
+}
+
+/// How much of the smaller box lies inside the other (0 to 1). Window frames from the
+/// accessibility tree and from the screen-capture list differ by a few points at most.
+pub fn overlap_ratio(a: [f64; 4], b: [f64; 4]) -> f64 {
+    let w = (a[0] + a[2]).min(b[0] + b[2]) - a[0].max(b[0]);
+    let h = (a[1] + a[3]).min(b[1] + b[3]) - a[1].max(b[1]);
+    if w <= 0.0 || h <= 0.0 {
+        return 0.0;
+    }
+    let smaller = (a[2] * a[3]).min(b[2] * b[3]).max(1.0);
+    (w * h / smaller).min(1.0)
 }
 
 /// Pixel rectangle inside a captured window picture for a stage given in screen points.
@@ -106,14 +118,26 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
     };
     let wf = win.frame.ok_or("window has no frame")?;
     let sc_windows = screen::windows_of_pid(pid).await?;
-    let target = sc_windows.iter().find(|s| same_window(s.frame, wf)).ok_or("window not found")?;
+    // The capture list's window that best matches the one the tree described.
+    let target = sc_windows
+        .iter()
+        .filter(|s| s.on_screen && s.frame[2] > 300.0)
+        .map(|s| (overlap_ratio(s.frame, wf) * (s.frame[2] * s.frame[3]).min(wf[2] * wf[3]) / (s.frame[2] * s.frame[3]).max(wf[2] * wf[3]), s))
+        .filter(|(score, _)| *score > 0.8)
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, s)| s)
+        .ok_or("window not found")?;
     let scale = (2560.0 / wf[2].max(1.0)).min(2.0);
     let pic = screen::capture_window(target.id, (wf[2] * scale) as usize, (wf[3] * scale) as usize).await?;
     // Meet's page is dark with the shared content as one big light block (plus its own
     // buttons around it). Take the whole page and keep that block, so a few points of
     // error in the page's reported positions cannot cut the content off. If the page has
     // no clear block (a dark share), fall back to the reported stage rectangle.
-    let (px, py, pw, ph) = stage_in_pixels(wf, share.page, pic.w, pic.h);
+    // The strip of people's tiles beside or under the share moves constantly and is not
+    // the shared content: cut it off before looking for the content.
+    let tiles = meet::meet_page(win).map(active::meet_tiles).unwrap_or_default();
+    let region = active::without_tile_strip(share.stage, &tiles);
+    let (px, py, pw, ph) = stage_in_pixels(wf, region, pic.w, pic.h);
     let page_pic = pic.crop(px, py, pw, ph);
     let from_page = page_pic.as_ref().and_then(|p| {
         let (x, y, w, h) = p.dense_bounds(40.0, 0.4)?;
@@ -122,7 +146,7 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
     let shared = match from_page {
         Some(f) => f,
         None => {
-            let (x, y, w, h) = stage_in_pixels(wf, share.stage, pic.w, pic.h);
+            let (x, y, w, h) = stage_in_pixels(wf, region, pic.w, pic.h);
             let Some(f) = pic.crop(x, y, w, h) else { return Ok(true) };
             f
         }
@@ -162,6 +186,14 @@ mod tests {
         let a = [-1520.0, -1384.0, 2797.0, 1360.0];
         assert!(same_window(a, [-1519.0, -1383.5, 2797.0, 1361.0]));
         assert!(!same_window(a, [-1520.0, -1384.0, 1200.0, 800.0]));
+    }
+
+    #[test]
+    fn windows_are_matched_by_overlap_not_exact_frames() {
+        let ax = [-1583.0, -1392.0, 2460.0, 1286.0];
+        assert!(overlap_ratio([-1583.0, -1392.0, 2460.0, 1286.0], ax) > 0.99);
+        assert!(overlap_ratio([-1580.0, -1388.0, 2455.0, 1280.0], ax) > 0.95);
+        assert!(overlap_ratio([0.0, 0.0, 500.0, 500.0], ax) < 0.01);
     }
 
     #[test]

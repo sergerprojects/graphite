@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronUp, ScanLine } from 'lucide-react';
 import { MeetingImage, listMeetingImages } from '@/lib/capture';
 import { ImageViewer } from './ImageViewer';
 
@@ -16,7 +16,9 @@ interface Props {
 /** "Images N" stack under the notes. Click to expand, click a picture to enlarge. */
 export function ImageStrip({ folder, live }: Props) {
   const [images, setImages] = useState<MeetingImage[]>([]);
-  const [open, setOpen] = useState(false);
+  // While the meeting runs the pictures are always in view, like a filmstrip; on a saved meeting
+  // they start folded.
+  const [open, setOpen] = useState(!!live);
   const [viewing, setViewing] = useState<number | null>(null);
 
   const load = useCallback(() => {
@@ -33,34 +35,16 @@ export function ImageStrip({ folder, live }: Props) {
 
   if (!folder || images.length === 0) return null;
 
-  const stack = images.slice(-3);
-
   return (
     <section className="mt-6" aria-label="Images from shared screens">
-      <button
-        className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-gray-50"
-        onClick={() => setOpen(o => !o)}
-        aria-expanded={open}
-      >
-        <span className="relative block h-9 w-14" aria-hidden>
-          {stack.map((im, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={im.name}
-              src={convertFileSrc(im.path)}
-              alt=""
-              loading="lazy"
-              className="absolute top-0 h-9 w-12 rounded border border-white object-cover shadow"
-              style={{ left: i * 4, zIndex: i }}
-            />
-          ))}
-        </span>
-        <span className="text-sm font-medium text-gray-900">Images {images.length}</span>
-        {open ? <ChevronDown className="h-4 w-4 text-gray-500" /> : <ChevronRight className="h-4 w-4 text-gray-500" />}
-      </button>
-
       {open && (
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5">
+          {live && (
+            <div className="flex aspect-[16/10] flex-col items-center justify-center gap-1.5 rounded-lg border border-lime-200 bg-lime-50 text-xs text-gray-700">
+              <ScanLine className="h-5 w-5 text-lime-600" aria-hidden />
+              Taking snapshots
+            </div>
+          )}
           {images.map((im, i) => (
             <button
               key={im.name}
@@ -73,12 +57,22 @@ export function ImageStrip({ folder, live }: Props) {
                 src={convertFileSrc(im.path)}
                 alt={im.text ? im.text.slice(0, 80) : `Shared screen ${i + 1}`}
                 loading="lazy"
-                className="aspect-video w-full object-cover transition group-hover:opacity-90"
+                className="aspect-[16/10] w-full object-cover transition group-hover:opacity-90"
               />
             </button>
           ))}
         </div>
       )}
+
+      <button
+        className="mt-2 ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+      >
+        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        Images
+        <span className="rounded-md border border-gray-200 bg-white px-1.5 text-xs">{images.length}</span>
+      </button>
 
       {viewing !== null && (
         <ImageViewer
