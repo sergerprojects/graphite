@@ -1,0 +1,322 @@
+//! Who is speaking right now, read from the call app's own interface.
+//!
+//! - Google Meet (Chrome): every participant is a tile; the speaking tile carries a CSS
+//!   class that sits on exactly one tile at a time and moves as people talk. Meet's class
+//!   names are scrambled and change, so we start from the names seen in other tools and
+//!   also *learn* the marker: a class that is on exactly one tile whenever it is present
+//!   and has been seen on at least two different tiles.
+//! - Zoom: a tile's accessibility description ends ", active speaker".
+//! - Microsoft Teams: the speaking tile carries the class `vdi-frame-occlusion`.
+//!
+//! Everything here is a pure function of the accessibility tree, so it is tested against
+//! trees shaped like real dumps.
+
+use super::ax::Node;
+use std::collections::{HashMap, HashSet};
+
+/// Classes reported by other open-source Meet tools as "this tile is speaking".
+/// (`BlxGDf` is only your own mic level, so it is left out.)
+const MEET_KNOWN_MARKERS: &[&str] = &["v5h6Xc", "Oaajhc"];
+const TEAMS_MARKER: &str = "vdi-frame-occlusion";
+
+/// One participant tile.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tile {
+    pub name: String,
+    pub classes: HashSet<String>,
+}
+
+fn rect_ok(f: &[f64; 4]) -> bool {
+    let (w, h) = (f[2], f[3]);
+    w >= 150.0 && h >= 100.0 && (1.0..=2.4).contains(&(w / h))
+}
+
+fn contains(outer: &[f64; 4], inner: &[f64; 4]) -> bool {
+    let (cx, cy) = (inner[0] + inner[2] / 2.0, inner[1] + inner[3] / 2.0);
+    cx >= outer[0] && cx <= outer[0] + outer[2] && cy >= outer[1] && cy <= outer[1] + outer[3]
+}
+
+fn plausible_name(t: &str) -> bool {
+    let t = t.trim();
+    let n = t.chars().count();
+    (2..=60).contains(&n) && t.chars().any(|c| c.is_alphabetic()) && !t.contains('\n')
+}
+
+fn all_classes(n: &Node, out: &mut HashSet<String>) {
+    out.extend(n.dom_classes.iter().cloned());
+    for c in &n.children {
+        all_classes(c, out);
+    }
+}
+
+/// Participant tiles of a Meet page: the smallest tile-shaped box around each name label.
+pub fn meet_tiles(page: &Node) -> Vec<Tile> {
+    // (tile frame key, label, label y, tile node)
+    let mut found: Vec<([i64; 4], String, f64, &Node)> = Vec::new();
+    fn visit<'a>(n: &'a Node, path: &mut Vec<&'a Node>, found: &mut Vec<([i64; 4], String, f64, &'a Node)>) {
+        if n.role == "AXStaticText" && plausible_name(&n.value) {
+            if let Some(tf) = n.frame {
+                // nearest ancestor that looks like a tile and contains this label
+                if let Some(tile) = path
+                    .iter()
+                    .rev()
+                    .find(|a| a.frame.map(|f| rect_ok(&f) && contains(&f, &tf)).unwrap_or(false))
+                {
+                    let f = tile.frame.unwrap();
+                    let key = [f[0] as i64, f[1] as i64, f[2] as i64, f[3] as i64];
+                    found.push((key, n.value.trim().to_string(), tf[1], tile));
+                }
+            }
+        }
+        path.push(n);
+        for c in &n.children {
+            visit(c, path, found);
+        }
+        path.pop();
+    }
+    visit(page, &mut Vec::new(), &mut found);
+
+    // How many tiles show each label: "Pin" or "More options" repeat on most tiles and are
+    // interface, names do not.
+    let tile_count = found.iter().map(|f| f.0).collect::<HashSet<_>>().len();
+    let mut tiles_with: HashMap<&str, HashSet<[i64; 4]>> = HashMap::new();
+    for (key, text, _, _) in &found {
+        tiles_with.entry(text.as_str()).or_default().insert(*key);
+    }
+    // One name per tile: among the labels unique to it, the one lowest on screen.
+    let mut best: HashMap<[i64; 4], (String, f64, &Node)> = HashMap::new();
+    for (key, text, y, node) in &found {
+        if tile_count >= 3 && tiles_with[text.as_str()].len() * 2 > tile_count {
+            continue;
+        }
+        let better = best.get(key).map(|(_, by, _)| *y > *by).unwrap_or(true);
+        if better {
+            best.insert(*key, (text.clone(), *y, *node));
+        }
+    }
+    let mut tiles: Vec<Tile> = best
+        .values()
+        .map(|(name, _, node)| {
+            let mut classes = HashSet::new();
+            all_classes(node, &mut classes);
+            Tile { name: name.clone(), classes }
+        })
+        .collect();
+    tiles.sort_by(|a, b| a.name.cmp(&b.name));
+    tiles
+}
+
+#[derive(Debug, Default, Clone)]
+struct TokenStat {
+    /// Different tiles this class has been the only holder on.
+    tiles: HashSet<String>,
+    /// Ticks it was present on exactly one tile / on more than one.
+    sole: u32,
+    shared: u32,
+}
+
+/// Finds which class marks the speaking tile, and reports who is speaking each tick.
+#[derive(Debug, Default)]
+pub struct MarkerTracker {
+    stats: HashMap<String, TokenStat>,
+}
+
+impl MarkerTracker {
+    /// Names marked as speaking in this snapshot of the tiles.
+    pub fn observe(&mut self, tiles: &[Tile]) -> Vec<String> {
+        if tiles.len() < 2 {
+            return Vec::new();
+        }
+        let mut holders: HashMap<&str, Vec<&str>> = HashMap::new();
+        for t in tiles {
+            for c in &t.classes {
+                holders.entry(c.as_str()).or_default().push(t.name.as_str());
+            }
+        }
+        for (token, who) in &holders {
+            if who.len() == tiles.len() {
+                continue; // on every tile: decoration
+            }
+            let s = self.stats.entry((*token).to_string()).or_default();
+            if who.len() == 1 {
+                s.sole += 1;
+                s.tiles.insert(who[0].to_string());
+            } else {
+                s.shared += 1;
+            }
+        }
+
+        // Known markers win when they are on exactly one tile.
+        for k in MEET_KNOWN_MARKERS {
+            if let Some(who) = holders.get(k) {
+                if who.len() == 1 {
+                    return vec![who[0].to_string()];
+                }
+            }
+        }
+        // Otherwise the learned marker: sole holder, seen moving between tiles, almost
+        // never shared. If several qualify, the one that has moved most.
+        let learned = self
+            .stats
+            .iter()
+            .filter(|(_, s)| s.tiles.len() >= 2 && s.shared * 10 <= s.sole)
+            .filter(|(tok, _)| holders.get(tok.as_str()).map(|w| w.len() == 1).unwrap_or(false))
+            .max_by_key(|(_, s)| (s.tiles.len(), s.sole))
+            .map(|(tok, _)| tok.clone());
+        match learned {
+            Some(tok) => vec![holders[tok.as_str()][0].to_string()],
+            None => Vec::new(),
+        }
+    }
+}
+
+/// Zoom: tiles whose description ends ", active speaker" (three or more people).
+pub fn zoom_speaking(window: &Node) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    window.walk(&mut |n| {
+        let d = if n.desc.is_empty() { &n.title } else { &n.desc };
+        if d.to_lowercase().contains("active speaker") {
+            if let Some(name) = d.split(',').next().map(str::trim).filter(|s| plausible_name(s)) {
+                let name = name.trim_end_matches(" (me)").trim_end_matches(" (Host)").trim().to_string();
+                if !out.contains(&name) {
+                    out.push(name);
+                }
+            }
+        }
+    });
+    out
+}
+
+fn first_text(n: &Node) -> Option<String> {
+    if n.role == "AXStaticText" && plausible_name(&n.value) {
+        return Some(n.value.trim().to_string());
+    }
+    n.children.iter().find_map(first_text)
+}
+
+/// Teams: tiles carrying `vdi-frame-occlusion`. The name comes from the tile's own
+/// description ("Name, Unmuted, ...") or its first label.
+pub fn teams_speaking(window: &Node) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    window.walk(&mut |n| {
+        if n.dom_classes.iter().any(|c| c == TEAMS_MARKER) {
+            let from_desc = [&n.desc, &n.title]
+                .iter()
+                .filter(|s| !s.is_empty())
+                .find_map(|s| s.split(',').next().map(str::trim).filter(|x| plausible_name(x)).map(String::from));
+            if let Some(name) = from_desc.or_else(|| first_text(n)) {
+                let name = name.replace("(Guest)", "").replace("(Unverified)", "").trim().to_string();
+                if !name.is_empty() && !out.contains(&name) {
+                    out.push(name);
+                }
+            }
+        }
+    });
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn n(role: &str, value: &str, frame: Option<[f64; 4]>, classes: &[&str], kids: Vec<Node>) -> Node {
+        Node {
+            role: role.into(),
+            value: value.into(),
+            frame,
+            dom_classes: classes.iter().map(|s| s.to_string()).collect(),
+            children: kids,
+            ..Default::default()
+        }
+    }
+
+    /// A tile shaped like Meet's: a 420x340 box holding a name label and a status group.
+    fn tile(x: f64, y: f64, name: &str, status: &[&str]) -> Node {
+        let label = n("AXStaticText", name, Some([x + 8.0, y + 300.0, 90.0, 20.0]), &[], vec![]);
+        let flag = n("AXGroup", "", Some([x + 380.0, y + 300.0, 20.0, 20.0]), status, vec![]);
+        n("AXGroup", "", Some([x, y, 420.0, 340.0]), &["dkjMxf"], vec![label, flag])
+    }
+
+    fn page(tiles: Vec<Node>) -> Node {
+        n("AXWebArea", "", Some([0.0, 0.0, 1700.0, 1200.0]), &[], tiles)
+    }
+
+    #[test]
+    fn finds_tiles_and_names() {
+        let p = page(vec![tile(0.0, 0.0, "Ana Park", &["JHK7jb"]), tile(430.0, 0.0, "Ben Cho", &["JHK7jb"]), tile(860.0, 0.0, "Dev Patel", &["JHK7jb"])]);
+        let names: Vec<String> = meet_tiles(&p).into_iter().map(|t| t.name).collect();
+        assert_eq!(names, vec!["Ana Park", "Ben Cho", "Dev Patel"]);
+    }
+
+    #[test]
+    fn repeated_interface_labels_are_not_names() {
+        let mk = |x: f64, name: &str| {
+            let mut t = tile(x, 0.0, name, &[]);
+            t.children.push(n("AXStaticText", "Pin", Some([x + 8.0, 10.0, 30.0, 14.0]), &[], vec![]));
+            t
+        };
+        let p = page(vec![mk(0.0, "Ana Park"), mk(430.0, "Ben Cho"), mk(860.0, "Dev Patel"), mk(1290.0, "Eli Stone")]);
+        let names: Vec<String> = meet_tiles(&p).into_iter().map(|t| t.name).collect();
+        assert!(!names.contains(&"Pin".to_string()));
+        assert_eq!(names.len(), 4);
+    }
+
+    #[test]
+    fn known_marker_names_the_speaker_at_once() {
+        let p = page(vec![tile(0.0, 0.0, "Ana Park", &["JHK7jb"]), tile(430.0, 0.0, "Cara Diaz", &["JHK7jb", "v5h6Xc"]), tile(860.0, 0.0, "Dev Patel", &["JHK7jb"])]);
+        let mut t = MarkerTracker::default();
+        assert_eq!(t.observe(&meet_tiles(&p)), vec!["Cara Diaz".to_string()]);
+    }
+
+    #[test]
+    fn learns_a_marker_that_moves_between_tiles() {
+        let frame = |who: usize| {
+            let mark = |i: usize| if i == who { vec!["JHK7jb", "xQzRt"] } else { vec!["JHK7jb"] };
+            meet_tiles(&page(vec![tile(0.0, 0.0, "A One", &mark(0)), tile(430.0, 0.0, "B Two", &mark(1)), tile(860.0, 0.0, "C Three", &mark(2))]))
+        };
+        let mut t = MarkerTracker::default();
+        assert!(t.observe(&frame(0)).is_empty(), "one tile is not enough to know");
+        assert_eq!(t.observe(&frame(1)), vec!["B Two".to_string()]);
+        assert_eq!(t.observe(&frame(2)), vec!["C Three".to_string()]);
+        assert_eq!(t.observe(&frame(0)), vec!["A One".to_string()]);
+    }
+
+    #[test]
+    fn a_class_stuck_on_one_tile_is_never_a_marker() {
+        // e.g. something only the self tile has
+        let frame = || meet_tiles(&page(vec![tile(0.0, 0.0, "A One", &["selfOnly"]), tile(430.0, 0.0, "B Two", &[]), tile(860.0, 0.0, "C Three", &[])]));
+        let mut t = MarkerTracker::default();
+        for _ in 0..20 {
+            assert!(t.observe(&frame()).is_empty());
+        }
+    }
+
+    #[test]
+    fn nobody_marked_means_nobody_speaking() {
+        let p = page(vec![tile(0.0, 0.0, "A One", &[]), tile(430.0, 0.0, "B Two", &[])]);
+        assert!(MarkerTracker::default().observe(&meet_tiles(&p)).is_empty());
+    }
+
+    #[test]
+    fn zoom_reads_the_active_speaker_description() {
+        let mk = |d: &str| Node { role: "AXTabGroup".into(), desc: d.into(), ..Default::default() };
+        let w = Node {
+            role: "AXWindow".into(),
+            children: vec![mk("Dana Lee, Computer audio unmuted, Video off, active speaker"), mk("Sam Ito, Computer audio muted, Video off"), mk("Priya (me), Computer audio unmuted")],
+            ..Default::default()
+        };
+        assert_eq!(zoom_speaking(&w), vec!["Dana Lee".to_string()]);
+    }
+
+    #[test]
+    fn teams_reads_the_speaking_class() {
+        let tile = Node {
+            role: "AXGroup".into(),
+            dom_classes: vec!["vdi-frame-occlusion".into()],
+            desc: "Alex Rivera (Guest), Unmuted, Video off".into(),
+            ..Default::default()
+        };
+        let w = Node { role: "AXWindow".into(), children: vec![tile], ..Default::default() };
+        assert_eq!(teams_speaking(&w), vec!["Alex Rivera".to_string()]);
+    }
+}
