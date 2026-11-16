@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.10
+- The update check no longer uses GitHub's rate-limited API, so it works on shared office networks.
+
 ## 0.9.9
 - Repository and documentation cleanup: privacy policy, contributing, security and build guides rewritten for Graphite; stale upstream files removed.
 - About text.

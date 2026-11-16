@@ -9,7 +9,9 @@ use tauri::{AppHandle, Wry};
 use tauri_plugin_store::StoreExt;
 
 /// Where new versions are announced. Change this one line if the project moves.
-pub const RELEASES_API: &str = "https://api.github.com/repos/sergerprojects/graphite/releases/latest";
+/// Where the newest release lives; GitHub redirects it to .../releases/tag/<version>.
+/// (The JSON API is rate-limited per network, which an office shares; this is not.)
+pub const LATEST_RELEASE_URL: &str = "https://github.com/sergerprojects/graphite/releases/latest";
 pub const INSTALL_COMMAND: &str =
     "curl -fsSL https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.sh | bash";
 const MODEL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet293_LM.onnx";
@@ -97,25 +99,36 @@ pub fn is_newer(current: &str, latest: &str) -> bool {
     false
 }
 
+/// "https://github.com/o/r/releases/tag/v0.9.9" (or a relative path) -> "v0.9.9".
+pub fn tag_from_location(location: &str) -> Option<String> {
+    let tag = location.rsplit("/releases/tag/").next().filter(|_| location.contains("/releases/tag/"))?;
+    let tag = tag.split(['?', '#']).next()?.trim();
+    (!tag.is_empty()).then(|| tag.to_string())
+}
+
 #[tauri::command]
 pub async fn check_for_update(app: AppHandle<Wry>) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent("Graphite-update-check")
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.get(RELEASES_API).send().await.map_err(|_| "Couldn't reach GitHub.".to_string())?;
-    if !resp.status().is_success() {
-        return Err("No release found (the project may have moved).".to_string());
-    }
-    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let tag = v.get("tag_name").and_then(|t| t.as_str()).unwrap_or("").to_string();
+    let resp = client.get(LATEST_RELEASE_URL).send().await.map_err(|_| "Couldn't reach GitHub.".to_string())?;
+    let location = resp
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+        .ok_or_else(|| "No release found (the project may have moved).".to_string())?;
+    let tag = tag_from_location(&location).ok_or_else(|| "No release found (the project may have moved).".to_string())?;
+    let url = if location.starts_with("http") { location } else { format!("https://github.com{location}") };
     Ok(UpdateInfo {
         newer: is_newer(&current, &tag),
         latest: tag.trim_start_matches('v').to_string(),
-        url: v.get("html_url").and_then(|t| t.as_str()).unwrap_or("").to_string(),
-        notes: v.get("body").and_then(|t| t.as_str()).unwrap_or("").chars().take(1500).collect(),
+        url,
+        notes: String::new(),
         command: INSTALL_COMMAND.to_string(),
         current,
     })
@@ -241,6 +254,14 @@ pub async fn open_graphite_folder(which: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_latest_tag_is_read_from_the_redirect() {
+        assert_eq!(tag_from_location("https://github.com/o/r/releases/tag/v0.9.9"), Some("v0.9.9".into()));
+        assert_eq!(tag_from_location("/o/r/releases/tag/v1.0.0?x=1"), Some("v1.0.0".into()));
+        assert_eq!(tag_from_location("https://github.com/o/r/releases"), None);
+        assert_eq!(tag_from_location("https://github.com/o/r/releases/tag/"), None);
+    }
 
     #[test]
     fn versions_compare_by_number_not_text() {
