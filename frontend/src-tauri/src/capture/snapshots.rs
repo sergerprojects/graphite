@@ -81,9 +81,13 @@ async fn run(app: AppHandle<Wry>) {
         }
         let Some(dir) = folder.clone() else { continue };
         match tick(&app, &dir, &mut keeper).await {
-            Ok(active) => sharing = active,
+            Ok(active) => {
+                sharing = active;
+                super::trace::note("snapshots", if active { "someone is sharing; watching for changes" } else { "no screen share on screen" });
+            }
             Err(e) => {
                 log::debug!("snapshots: {e}");
+                super::trace::note("snapshots", &format!("could not take a picture: {e}"));
                 sharing = false;
             }
         }
@@ -131,6 +135,7 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
         let png = shared.to_png()?;
         let text = ocr_bytes(dir, &png);
         let name = store::save(dir, &png, text.as_deref(), t, (shared.w, shared.h))?;
+        super::trace::note("snapshots", &format!("saved {name}"));
         log::info!("snapshots: saved {name} ({} shared by {})", if share.own { "own screen" } else { "screen" }, share.presenter);
         let _ = app.emit("snapshot-added", name);
     }
@@ -173,5 +178,47 @@ mod tests {
     fn stage_left_of_the_window_clamps_to_zero() {
         let (x, y, _, _) = stage_in_pixels([100.0, 100.0, 800.0, 600.0], [50.0, 90.0, 100.0, 100.0], 800, 600);
         assert_eq!((x, y), (0, 0));
+    }
+}
+
+/// Manual check against a live share (needs Screen Recording and Accessibility for the terminal):
+/// `cargo test --lib live_snapshot_probe -- --ignored --nocapture`
+#[cfg(test)]
+mod live_probe {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn live_snapshot_probe() {
+        tauri::async_runtime::block_on(async {
+            let pid = ax::find_pid(CallApp::Chrome).expect("chrome");
+            let windows = ax::snapshot_windows(pid, true, &Limits::poll());
+            let found = windows.iter().find_map(|w| meet::detect(w).map(|s| (w, s)));
+            let Some((win, share)) = found else { println!("no share found"); return };
+            let wf = win.frame.expect("frame");
+            println!("window {wf:?} share {share:?}");
+            let sc = screen::windows_of_pid(pid).await.expect("sc windows");
+            println!("sc windows: {:?}", sc.iter().map(|s| (s.id, s.frame, s.on_screen)).collect::<Vec<_>>());
+            let target = sc.iter().find(|s| same_window(s.frame, wf));
+            println!("target: {:?}", target.map(|t| t.id));
+            let Some(target) = target else { return };
+            let scale = (2560.0 / wf[2].max(1.0)).min(2.0);
+            let pic = screen::capture_window(target.id, (wf[2] * scale) as usize, (wf[3] * scale) as usize).await;
+            match pic {
+                Err(e) => println!("capture failed: {e}"),
+                Ok(pic) => {
+                    println!("picture {}x{} blank={}", pic.w, pic.h, pic.is_blank());
+                    let (px, py, pw, ph) = stage_in_pixels(wf, share.page, pic.w, pic.h);
+                    let page = pic.crop(px, py, pw, ph);
+                    let b = page.as_ref().and_then(|p| p.dense_bounds(40.0, 0.4));
+                    println!("page crop {:?}, dense bounds {:?}", page.as_ref().map(|p| (p.w, p.h)), b);
+                    if let Some(p) = page {
+                        let out = std::env::temp_dir().join("graphite-probe-page.png");
+                        std::fs::write(&out, p.to_png().unwrap()).unwrap();
+                        println!("saved {}", out.display());
+                    }
+                }
+            }
+        });
     }
 }
