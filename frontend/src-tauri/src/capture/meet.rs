@@ -46,6 +46,14 @@ pub fn parse_presenter(heading: &str) -> Option<(String, bool)> {
     (!name.is_empty()).then_some((name, own))
 }
 
+/// Top edge (screen points) of Meet's call-controls bar, which floats over the bottom of the
+/// stage with the reaction tray above it. Anything below it is not shared content.
+pub fn controls_top(window: &Node) -> Option<f64> {
+    find(window, &|n| n.subrole == "AXLandmarkRegion" && (n.title == "Call controls" || n.desc == "Call controls"))
+        .and_then(|n| n.frame)
+        .map(|f| f[1])
+}
+
 /// Sharing state of the Meet page in this window, or None when nobody presents.
 pub fn detect(window: &Node) -> Option<Share> {
     let page = meet_page(window)?;

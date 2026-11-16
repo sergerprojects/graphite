@@ -102,10 +102,11 @@ pub fn without_tile_strip(stage: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
     };
     let in_bottom: Vec<&Tile> = tiles.iter().filter(|t| t.rect[1] >= bottom_from - 4.0 && t.rect[1] < bottom_edge).collect();
     let in_right: Vec<&Tile> = tiles.iter().filter(|t| t.rect[0] >= right_from - 4.0 && t.rect[0] < right_edge).collect();
+    // A row of three or more wins: in a two-row strip the far-right tiles share a left edge but
+    // are not a column. Otherwise two tiles down the right side (a 1:1 or a small call) are one.
     if let Some(y) = lined_up(in_bottom.iter().map(|t| t.rect[1]).collect(), 3) {
         out[3] = (y - 2.0 - stage[1]).max(0.0);
-    }
-    if let Some(x) = lined_up(in_right.iter().map(|t| t.rect[0]).collect(), 3) {
+    } else if let Some(x) = lined_up(in_right.iter().map(|t| t.rect[0]).collect(), 2) {
         out[2] = (x - 2.0 - stage[0]).max(0.0);
     }
     out
@@ -343,6 +344,14 @@ mod tests {
         assert_eq!(without_tile_strip(stage, &column), [0.0, 0.0, 1398.0, 1000.0]);
         // no strip: unchanged
         assert_eq!(without_tile_strip(stage, &[tile(300.0, 100.0), tile(600.0, 100.0)]), stage);
+    }
+
+    #[test]
+    fn two_tiles_down_the_side_of_a_one_to_one_are_a_column() {
+        let t = |x: f64, y: f64| Tile { name: "x".into(), classes: HashSet::new(), area: 0.0, rect: [x, y, 350.0, 260.0] };
+        let stage = [0.0, 0.0, 1850.0, 980.0];
+        let r = without_tile_strip(stage, &[t(1480.0, 10.0), t(1480.0, 280.0)]);
+        assert_eq!(r, [0.0, 0.0, 1478.0, 980.0]);
     }
 
     #[test]

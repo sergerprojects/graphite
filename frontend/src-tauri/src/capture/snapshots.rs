@@ -136,12 +136,22 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
     // The strip of people's tiles beside or under the share moves constantly and is not
     // the shared content: cut it off before looking for the content.
     let tiles = meet::meet_page(win).map(active::meet_tiles).unwrap_or_default();
-    let region = active::without_tile_strip(share.stage, &tiles);
+    let mut region = active::without_tile_strip(share.stage, &tiles);
+    // The call-controls bar (and the reaction tray over it) floats over the bottom of the stage.
+    if let Some(top) = meet::controls_top(win) {
+        if top > region[1] + region[3] * 0.5 && top < region[1] + region[3] {
+            region[3] = (top - 2.0 - region[1]).max(0.0);
+        }
+    }
     let (px, py, pw, ph) = stage_in_pixels(wf, region, pic.w, pic.h);
     let page_pic = pic.crop(px, py, pw, ph);
     let from_page = page_pic.as_ref().and_then(|p| {
         let (x, y, w, h) = p.dense_bounds(40.0, 0.4)?;
-        p.crop(x, y, w, h)
+        let block = p.crop(x, y, w, h)?;
+        // Whatever the layout, tiles beside or under the share are separated from it by black
+        // gutters: keep the big piece.
+        let (bx, by, bw, bh) = block.main_block();
+        block.crop(bx, by, bw, bh)
     });
     let shared = match from_page {
         Some(f) => f,
@@ -229,6 +239,9 @@ mod live_probe {
             let Some((win, share)) = found else { println!("no share found"); return };
             let wf = win.frame.expect("frame");
             println!("window {wf:?} share {share:?}");
+            let tiles = active::meet_tiles(win);
+            for t in &tiles { println!("tile {:?} {:?}", t.name, t.rect); }
+            println!("region {:?} controls_top {:?}", active::without_tile_strip(share.stage, &tiles), meet::controls_top(win));
             let sc = screen::windows_of_pid(pid).await.expect("sc windows");
             println!("sc windows: {:?}", sc.iter().map(|s| (s.id, s.frame, s.on_screen)).collect::<Vec<_>>());
             let target = sc.iter().find(|s| same_window(s.frame, wf));

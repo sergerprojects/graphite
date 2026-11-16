@@ -116,6 +116,83 @@ impl Frame {
         (w * h * 20 >= self.w * self.h).then_some((x, y, w, h))
     }
 
+    /// The main block of a picture whose pieces are separated by near-black gutters: a share
+    /// with the people's tiles beside or under it. Looks for full-height (or full-width) black
+    /// gutters, and when one side clearly holds most of the picture, returns just that side.
+    /// Layout-independent, so it works whatever the window or monitor size.
+    pub fn main_block(&self) -> (usize, usize, usize, usize) {
+        let mut r = (0usize, 0usize, self.w, self.h);
+        for _ in 0..4 {
+            let before = r;
+            r = self.trim_axis(r, true);
+            r = self.trim_axis(r, false);
+            if r == before {
+                break;
+            }
+        }
+        r
+    }
+
+    fn trim_axis(&self, r: (usize, usize, usize, usize), columns: bool) -> (usize, usize, usize, usize) {
+        const S: usize = 2;
+        // Meet's stage is dark grey, not pure black; a gutter is dark AND neutral (not a dark blue slide).
+        const BLACK: f32 = 45.0;
+        let (x, y, w, h) = r;
+        let (len, across) = if columns { (w, h) } else { (h, w) };
+        if len < 40 || across < 20 {
+            return r;
+        }
+        let dark_line = |i: usize| -> bool {
+            let mut dark = 0usize;
+            let mut total = 0usize;
+            let mut j = 0;
+            while j < across {
+                let (px, py) = if columns { (x + i, y + j) } else { (x + j, y + i) };
+                total += 1;
+                let i = (py * self.w + px) * 4;
+                let (b, g, r) = (self.bgra[i], self.bgra[i + 1], self.bgra[i + 2]);
+                let neutral = b.max(g).max(r) - b.min(g).min(r) <= 10;
+                if neutral && self.luma(px, py) < BLACK {
+                    dark += 1;
+                }
+                j += S;
+            }
+            dark as f32 / total.max(1) as f32 >= 0.97
+        };
+        let gutter: Vec<bool> = (0..len).map(dark_line).collect();
+        let min_gap = (len / 250).max(6);
+        // Segments of picture between gutters wide enough to count.
+        let mut segs: Vec<(usize, usize)> = Vec::new();
+        let (mut start, mut i) = (0usize, 0usize);
+        while i < len {
+            if gutter[i] {
+                let run_start = i;
+                while i < len && gutter[i] {
+                    i += 1;
+                }
+                if i - run_start >= min_gap {
+                    if run_start > start {
+                        segs.push((start, run_start));
+                    }
+                    start = i;
+                }
+            } else {
+                i += 1;
+            }
+        }
+        if len > start {
+            segs.push((start, len));
+        }
+        if segs.len() < 2 {
+            return r;
+        }
+        let best = *segs.iter().max_by_key(|(a, b)| b - a).unwrap();
+        if (best.1 - best.0) * 2 < len {
+            return r;
+        }
+        if columns { (x + best.0, y, best.1 - best.0, h) } else { (x, y + best.0, w, best.1 - best.0) }
+    }
+
     pub fn to_png(&self) -> Result<Vec<u8>, String> {
         let mut rgba = Vec::with_capacity(self.bgra.len());
         for px in self.bgra.chunks_exact(4) {
@@ -251,6 +328,55 @@ mod tests {
         assert!(w >= 62 && h >= 46);
     }
 
+
+    #[test]
+    fn main_block_drops_a_tile_column_beside_the_share() {
+        // 400x200 black; share 0..260, gutter 260..274, tiles 274..400 (bright but separate).
+        let (w, h) = (400usize, 200usize);
+        let mut v = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let c = if x < 260 || x >= 274 { 200 } else { 0 };
+                let i = (y * w + x) * 4;
+                v[i..i + 4].copy_from_slice(&[c, c, c, 255]);
+            }
+        }
+        let f = Frame::new(w, h, v).unwrap();
+        assert_eq!(f.main_block(), (0, 0, 260, 200));
+    }
+
+    #[test]
+    fn main_block_drops_a_strip_under_the_share() {
+        let (w, h) = (400usize, 300usize);
+        let mut v = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let c = if y < 200 || y >= 214 { 190 } else { 0 };
+                let i = (y * w + x) * 4;
+                v[i..i + 4].copy_from_slice(&[c, c, c, 255]);
+            }
+        }
+        let f = Frame::new(w, h, v).unwrap();
+        assert_eq!(f.main_block(), (0, 0, 400, 200));
+    }
+
+    #[test]
+    fn main_block_leaves_one_piece_and_even_splits_alone() {
+        let f = solid(300, 200, 180, 180, 180);
+        assert_eq!(f.main_block(), (0, 0, 300, 200));
+        // Two equal halves: nothing is clearly the share, keep everything.
+        let (w, h) = (300usize, 100usize);
+        let mut v = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let c = if (140..160).contains(&x) { 0 } else { 200 };
+                let i = (y * w + x) * 4;
+                v[i..i + 4].copy_from_slice(&[c, c, c, 255]);
+            }
+        }
+        assert_eq!(Frame::new(w, h, v).unwrap().main_block(), (0, 0, 300, 100));
+    }
+
     #[test]
     fn png_has_the_signature_and_decodes_to_the_same_size() {
         let f = split(16, 8, true);
@@ -259,5 +385,28 @@ mod tests {
         let dec = png::Decoder::new(std::io::Cursor::new(bytes));
         let r = dec.read_info().unwrap();
         assert_eq!((r.info().width, r.info().height), (16, 8));
+    }
+}
+
+#[cfg(test)]
+mod real_picture_probe {
+    use super::*;
+
+    /// GRAPHITE_PROBE_PNG=<file> cargo test real_picture -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn real_picture_main_block() {
+        let path = std::env::var("GRAPHITE_PROBE_PNG").expect("set GRAPHITE_PROBE_PNG");
+        let dec = png::Decoder::new(std::fs::File::open(path).unwrap());
+        let mut r = dec.read_info().unwrap();
+        let mut buf = vec![0; r.output_buffer_size()];
+        let info = r.next_frame(&mut buf).unwrap();
+        let ch = info.color_type.samples();
+        let mut bgra = Vec::new();
+        for px in buf[..info.buffer_size()].chunks(ch) {
+            bgra.extend_from_slice(&[px[2], px[1], px[0], 255]);
+        }
+        let f = Frame::new(info.width as usize, info.height as usize, bgra).unwrap();
+        println!("picture {}x{} main_block {:?}", f.w, f.h, f.main_block());
     }
 }

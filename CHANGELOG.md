@@ -1,5 +1,12 @@
 # Changelog
 
+
+## 0.9.19
+- Snapshots now find the shared content from the picture itself: the people's tiles are cut off wherever they sit, because they are separated from the share by the call's dark gutter. Works for any window or monitor size and layout.
+
+## 0.9.18
+- Snapshots keep only the shared content in small calls too: two people down the side of a 1:1 are cut off, and so is Meet's floating call-controls bar and reaction tray.
+
 ## 0.9.17
 - Notes feel like Notion: the same block shortcuts (⌘⌥1/2/3 headings, ⌘⇧4 to-do, ⌘⇧7 numbered, ⌘⇧8 bullets, ⌘⇧9 toggle, ⌘B/I/U/E, ⌘K link), a short "/" menu with only what a meeting needs, no side handles.
 - Summaries now build on what you typed: your headings and points stay as the backbone and are expanded from the transcript, instead of a separate summary beside them. "My notes" shows alone only until a summary exists.
