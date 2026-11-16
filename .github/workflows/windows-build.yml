@@ -1,0 +1,61 @@
+name: windows-build
+
+# Proves Graphite still builds on Windows and produces an installer you can download
+# from the run's "Artifacts". Not a release: nothing is published from here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # The local-summary helper is a separate program the installer bundles.
+      - name: Build llama-helper (CPU)
+        shell: bash
+        run: |
+          (cd llama-helper && cargo build --release)
+          mkdir -p frontend/src-tauri/binaries
+          cp target/release/llama-helper.exe frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
+
+      - name: Install frontend packages
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the installer
+        working-directory: frontend
+        shell: bash
+        run: pnpm run tauri:build -- --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Name the installer
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist
+          f=$(ls target/release/bundle/nsis/*-setup.exe | head -n1)
+          cp "$f" dist/Graphite-windows-x64-setup.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Graphite-windows-x64-setup
+          path: dist/Graphite-windows-x64-setup.exe

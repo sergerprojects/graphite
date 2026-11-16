@@ -55,6 +55,7 @@ pub mod folders;
 pub mod meeting_merge;
 pub mod indicator;
 pub mod meeting_alert;
+pub mod platform;
 pub mod openrouter;
 pub mod parakeet_engine;
 pub mod state;

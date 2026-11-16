@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePlatform } from '@/hooks/usePlatform';
 import { CaptureStatus, getCaptureStatus, openPrivacyPane, requestAccessibility, requestScreenRecording } from '@/lib/capture';
 
 /**
@@ -9,6 +10,7 @@ import { CaptureStatus, getCaptureStatus, openPrivacyPane, requestAccessibility,
  */
 export function CaptureNotice() {
   const [s, setS] = useState<CaptureStatus | null>(null);
+  const platform = usePlatform();
 
   useEffect(() => {
     let alive = true;
@@ -21,7 +23,8 @@ export function CaptureNotice() {
     };
   }, []);
 
-  if (!s) return null;
+  // Names and snapshots read the call app through macOS Accessibility; only the Mac has them for now.
+  if (!s || platform !== 'macos') return null;
   const needAccess = s.names && !s.accessibility;
   const needScreen = s.snapshots && !s.screen_recording;
   if (!needAccess && !needScreen) return null;

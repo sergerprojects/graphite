@@ -29,22 +29,30 @@ pub(crate) fn find_claude() -> Option<PathBuf> {
         return Some(p);
     }
     let h = home()?;
-    let candidates = [
-        h.join(".local/bin/claude"),
-        h.join(".claude/local/claude"),
-        PathBuf::from("/opt/homebrew/bin/claude"),
-        PathBuf::from("/usr/local/bin/claude"),
-    ];
-    if let Some(p) = candidates.iter().find(|p| p.exists()) {
-        return Some(p.clone());
+    let exe = if cfg!(windows) { "claude.exe" } else { "claude" };
+    // Every folder a Claude Code install usually lands in (see platform::tool_path).
+    let found = std::env::split_paths(&crate::platform::tool_path()).map(|d| d.join(exe)).find(|p| p.exists());
+    if found.is_some() {
+        return found;
     }
-    // Last resort: ask a login shell (finds nvm/volta/custom installs).
-    let out = std::process::Command::new("/bin/zsh")
-        .args(["-lc", "command -v claude"])
-        .output()
-        .ok()?;
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!path.is_empty() && PathBuf::from(&path).exists()).then(|| PathBuf::from(path))
+    #[cfg(windows)]
+    {
+        // The installer also ships a .cmd shim; `where` finds either.
+        let out = std::process::Command::new("where").arg("claude").output().ok()?;
+        let first = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string();
+        return (!first.is_empty() && PathBuf::from(&first).exists()).then(|| PathBuf::from(first));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = &h;
+        // Last resort: ask a login shell (finds nvm/volta/custom installs).
+        let out = std::process::Command::new("/bin/zsh")
+            .args(["-lc", "command -v claude"])
+            .output()
+            .ok()?;
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (!path.is_empty() && PathBuf::from(&path).exists()).then(|| PathBuf::from(path))
+    }
 }
 
 /// Keep the most recent part of a long transcript (char-boundary safe).
@@ -130,15 +138,9 @@ pub async fn run_claude(
     timeout: Duration,
 ) -> Result<String, String> {
     let claude = find_claude().ok_or_else(|| {
-        "Claude Code isn't installed on this Mac. Install it from claude.com/claude-code, sign in once in Terminal, then try again."
+        "Claude Code isn't installed on this computer. Install it from claude.com/claude-code, sign in once in Terminal, then try again."
             .to_string()
     })?;
-    let h = home().unwrap_or_default();
-    let path = format!(
-        "{}:{}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-        h.join(".local/bin").display(),
-        h.join(".claude/local").display()
-    );
     let mut cmd = Command::new(&claude);
     cmd.args(["-p", "--setting-sources", "user", "--model", model]);
     if allowed_tools.is_empty() {
@@ -147,14 +149,12 @@ pub async fn run_claude(
         cmd.args(["--allowedTools", &allowed_tools.join(",")]);
     }
     cmd.env_clear()
-        .env("HOME", &h)
-        .env("PATH", path)
+        .envs(crate::platform::base_env())
         .env("USER", std::env::var("USER").unwrap_or_default())
         .env("LOGNAME", std::env::var("LOGNAME").or_else(|_| std::env::var("USER")).unwrap_or_default())
         // Claude Code finds its saved connector sign-ins through these; without them
         // a headless call reports "needs authorization" even when signed in.
-        .env("TMPDIR", std::env::temp_dir())
-        .env("SHELL", "/bin/zsh")
+        .env("SHELL", if cfg!(windows) { "" } else { "/bin/zsh" })
         .env("LANG", "en_US.UTF-8")
         .current_dir(std::env::temp_dir())
         .stdin(Stdio::piped())
@@ -265,19 +265,15 @@ pub async fn call_mcp_tool(tool: &str, args: &serde_json::Value, timeout: Durati
         tool, args
     );
     let claude = find_claude().ok_or_else(|| {
-        "Claude Code isn't installed on this Mac. Install it from claude.com/claude-code, sign in once in Terminal, then try again.".to_string()
+        "Claude Code isn't installed on this computer. Install it from claude.com/claude-code, sign in once in Terminal, then try again.".to_string()
     })?;
-    let h = home().unwrap_or_default();
-    let path = format!("{}:{}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", h.join(".local/bin").display(), h.join(".claude/local").display());
     let mut child = Command::new(&claude)
         .args(["-p", "--model", "haiku", "--setting-sources", "user", "--allowedTools", tool, "--output-format", "stream-json", "--verbose", "--max-turns", "6"])
         .env_clear()
-        .env("HOME", &h)
-        .env("PATH", path)
+        .envs(crate::platform::base_env())
         .env("USER", std::env::var("USER").unwrap_or_default())
         .env("LOGNAME", std::env::var("LOGNAME").or_else(|_| std::env::var("USER")).unwrap_or_default())
-        .env("TMPDIR", std::env::temp_dir())
-        .env("SHELL", "/bin/zsh")
+        .env("SHELL", if cfg!(windows) { "" } else { "/bin/zsh" })
         .env("LANG", "en_US.UTF-8")
         .current_dir(std::env::temp_dir())
         .stdin(Stdio::piped())

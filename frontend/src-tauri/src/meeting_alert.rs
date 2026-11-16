@@ -103,7 +103,7 @@ pub fn close_for(app: &AppHandle<Wry>, event_id: Option<&str>) -> bool {
 
 fn open_link(event: &CalendarEvent) {
     if let Some(url) = event.video_url.as_deref().and_then(safe_link) {
-        if let Err(e) = std::process::Command::new("open").arg(url).spawn() {
+        if let Err(e) = crate::platform::open(url) {
             log::warn!("meeting-alert: could not open {url}: {e}");
         }
     }

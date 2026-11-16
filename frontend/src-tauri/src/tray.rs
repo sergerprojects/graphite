@@ -232,7 +232,11 @@ fn check_updates_handler<R: Runtime>(app: &AppHandle<R>) {
 pub(crate) fn set_calendar_events<R: Runtime>(app: &AppHandle<R>, enabled: bool, events: &[CalendarEvent]) {
     if let Some(tray) = app.tray_by_id("main-tray") {
         let title = if enabled { tray_title(events, Utc::now()) } else { None };
+        #[cfg(target_os = "macos")]
         let _ = tray.set_title(title.as_deref());
+        // Only the Mac menu bar can show text beside the icon; elsewhere use the hover text.
+        #[cfg(not(target_os = "macos"))]
+        let _ = tray.set_tooltip(Some(title.as_deref().unwrap_or("Graphite")));
     }
     let entries = calendar_menu_entries(enabled, events, &Local::now());
     let changed = match CALENDAR_ENTRIES.lock() {

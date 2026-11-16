@@ -118,6 +118,44 @@ impl CallApp {
 #[cfg(target_os = "macos")]
 pub use mac::{find_pid, snapshot_app, snapshot_windows, Limits};
 
+/// No accessibility reader off macOS yet: the readers find no call app and the capture
+/// loops idle. (A Windows UI Automation reader would replace this.)
+#[cfg(not(target_os = "macos"))]
+pub use other::{find_pid, snapshot_app, snapshot_windows, Limits};
+
+#[cfg(not(target_os = "macos"))]
+mod other {
+    use super::{CallApp, Node};
+    use std::time::Duration;
+
+    pub struct Limits {
+        pub max_depth: usize,
+        pub max_nodes: usize,
+        pub max_time: Duration,
+    }
+
+    impl Limits {
+        pub fn probe() -> Self {
+            Self { max_depth: 0, max_nodes: 0, max_time: Duration::ZERO }
+        }
+        pub fn poll() -> Self {
+            Self::probe()
+        }
+    }
+
+    pub fn find_pid(_app: CallApp) -> Option<i32> {
+        None
+    }
+
+    pub fn snapshot_app(_pid: i32, _wake_browser: bool, _lim: &Limits) -> Option<Node> {
+        None
+    }
+
+    pub fn snapshot_windows(_pid: i32, _wake_browser: bool, _lim: &Limits) -> Vec<Node> {
+        Vec::new()
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod mac {
     use super::{CallApp, Node};

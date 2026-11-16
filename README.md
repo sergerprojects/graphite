@@ -21,6 +21,14 @@ curl -fsSL https://raw.githubusercontent.com/sergerprojects/graphite/main/script
 
 Graphite opens and walks you through three screens: download the speech model (about 670 MB, once), allow the microphone and audio capture, and optionally allow Accessibility and Screen Recording for speaker names and snapshots. Installing this way avoids the macOS "can't be opened" warning because the app is not distributed through the App Store. Run the same line again to update; Graphite also tells you once a day when a new version exists.
 
+**Windows (preview).** Windows 10 or 11, 64-bit. Open PowerShell and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.ps1 | iex
+```
+
+It records, transcribes, takes notes, summarizes and chats like the Mac version. Speaker names from the call app and screen snapshots are Mac-only for now. Windows may show a SmartScreen warning because the installer is not signed: choose More info, then Run anyway. Remove it with `scripts\uninstall.ps1`.
+
 Prefer to download it yourself? Get `Graphite-macos-arm64.zip` from the [latest release](https://github.com/sergerprojects/graphite/releases/latest), unzip it into Applications, then run `xattr -cr /Applications/Graphite.app` before opening it.
 
 After setup, open **Settings, General, Health and updates** to confirm Claude Code is ready (summaries and chat use it) and to install the optional voice models. See the [beta guide](docs/BETA.md) for a short list of things to try. To remove Graphite: `bash scripts/uninstall.sh` (keeps your meetings) or `bash scripts/uninstall.sh --everything`.

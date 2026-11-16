@@ -4,10 +4,20 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { CaptureSettings } from '@/components/Calendar/CaptureSettings';
 import { CaptureDiagnostics } from '@/components/Calendar/CaptureSettings';
+import { usePlatform } from '@/hooks/usePlatform';
 
 /** What Graphite reads from the call app: participant names and shared screens. */
 export function CaptureTab() {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const platform = usePlatform();
+  if (platform !== 'macos') {
+    return (
+      <p className="text-sm text-gray-600">
+        Speaker names from the call app and screen-share snapshots are Mac-only for now. On this computer
+        Graphite tells voices apart by sound and you can name them in "Who's who".
+      </p>
+    );
+  }
   return (
     <div className="space-y-4">
       <CaptureSettings />

@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+- Windows preview: the app now builds on Windows (CI builds an installer on every push), finds Claude Code and Python the Windows way, and hides the Mac-only name and snapshot settings there. PowerShell install and uninstall scripts added. Not yet tested on a real Windows machine.
 
 ## 0.9.19
 - Snapshots now find the shared content from the picture itself: the people's tiles are cut off wherever they sit, because they are separated from the share by the call's dark gutter. Works for any window or monitor size and layout.

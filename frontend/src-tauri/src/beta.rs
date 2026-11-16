@@ -12,8 +12,12 @@ use tauri_plugin_store::StoreExt;
 /// Where the newest release lives; GitHub redirects it to .../releases/tag/<version>.
 /// (The JSON API is rate-limited per network, which an office shares; this is not.)
 pub const LATEST_RELEASE_URL: &str = "https://github.com/sergerprojects/graphite/releases/latest";
+#[cfg(not(windows))]
 pub const INSTALL_COMMAND: &str =
     "curl -fsSL https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.sh | bash";
+#[cfg(windows)]
+pub const INSTALL_COMMAND: &str =
+    "irm https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.ps1 | iex";
 const MODEL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet293_LM.onnx";
 const MODEL_FILE: &str = "wespeaker_en_voxceleb_resnet293_LM.onnx";
 
@@ -151,7 +155,7 @@ fn model_path() -> PathBuf {
 #[tauri::command]
 pub async fn voice_models_status() -> VoiceStatus {
     VoiceStatus {
-        python_env: home().join(".graphite/venv/bin/python").exists(),
+        python_env: crate::platform::venv_python(&home().join(".graphite/venv")).exists(),
         model: std::fs::metadata(model_path()).map(|m| m.len() > 10_000_000).unwrap_or(false),
     }
 }
@@ -160,8 +164,7 @@ async fn run(cmd: &str, args: &[&str]) -> Result<(), String> {
     let out = tokio::process::Command::new(cmd)
         .args(args)
         .env_clear()
-        .env("HOME", home())
-        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin")
+        .envs(crate::platform::base_env())
         .stdin(Stdio::null())
         .output()
         .await
@@ -179,12 +182,20 @@ async fn run(cmd: &str, args: &[&str]) -> Result<(), String> {
 pub async fn install_voice_models() -> Result<String, String> {
     let g = home().join(".graphite");
     std::fs::create_dir_all(g.join("speaker-models")).map_err(|e| e.to_string())?;
-    if !g.join("venv/bin/python").exists() {
-        run("/usr/bin/python3", &["-m", "venv", &g.join("venv").display().to_string()]).await.map_err(|e| {
-            format!("Python 3 is needed. In Terminal run: xcode-select --install ({e})")
+    if !crate::platform::venv_python(&g.join("venv")).exists() {
+        let (py, lead) = crate::platform::system_python();
+        let mut args: Vec<String> = lead.iter().map(|s| s.to_string()).collect();
+        args.extend(["-m".into(), "venv".into(), g.join("venv").display().to_string()]);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        run(py, &args).await.map_err(|e| {
+            if cfg!(windows) {
+                format!("Python 3 is needed. Install it from python.org (tick \"Add python.exe to PATH\"), then try again ({e})")
+            } else {
+                format!("Python 3 is needed. In Terminal run: xcode-select --install ({e})")
+            }
         })?;
     }
-    run(&g.join("venv/bin/pip").display().to_string(), &["install", "-q", "--disable-pip-version-check", "sherpa-onnx", "numpy"])
+    run(&crate::platform::venv_pip(&g.join("venv")).display().to_string(), &["install", "-q", "--disable-pip-version-check", "sherpa-onnx", "numpy"])
         .await
         .map_err(|e| format!("Could not install the voice engine: {e}"))?;
     if !voice_models_status().await.model {
@@ -209,12 +220,15 @@ pub async fn install_voice_models() -> Result<String, String> {
 // ---------------------------------------------------------------------------
 
 fn sw_vers() -> String {
-    std::process::Command::new("/usr/bin/sw_vers")
+    #[cfg(target_os = "macos")]
+    return std::process::Command::new("/usr/bin/sw_vers")
         .arg("-productVersion")
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|| "unknown".into())
+        .unwrap_or_else(|| "unknown".into());
+    #[cfg(not(target_os = "macos"))]
+    return "unknown".into();
 }
 
 /// A text report people can paste into a bug report. No meeting content, names or paths of meetings.
@@ -224,8 +238,9 @@ pub async fn app_diagnostics(app: AppHandle<Wry>) -> String {
     let v = voice_models_status().await;
     let transcribing = crate::audio::recording_commands::is_recording().await;
     format!(
-        "Graphite {}\nmacOS {} ({})\nAccessibility: {}\nScreen Recording: {}\nClaude Code installed: {}\nVoice engine: {} / voice model: {}\nRemember voices: {}\nCurrently transcribing: {}\nCalendar: {}\n\nRecent capture log:\n{}\n",
+        "Graphite {}\n{} {} ({})\nAccessibility: {}\nScreen Recording: {}\nClaude Code installed: {}\nVoice engine: {} / voice model: {}\nRemember voices: {}\nCurrently transcribing: {}\nCalendar: {}\n\nRecent capture log:\n{}\n",
         app.package_info().version,
+        std::env::consts::OS,
         sw_vers(),
         std::env::consts::ARCH,
         crate::capture::perms::accessibility_granted(),
@@ -249,7 +264,7 @@ pub async fn open_graphite_folder(which: String) -> Result<(), String> {
         _ => return Err("unknown folder".into()),
     };
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    std::process::Command::new("open").arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
+    crate::platform::open(path).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

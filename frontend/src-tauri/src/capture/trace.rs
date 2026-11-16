@@ -10,7 +10,7 @@ static LAST: Mutex<Option<std::collections::HashMap<String, String>>> = Mutex::n
 const MAX_BYTES: u64 = 200_000;
 
 pub fn path() -> Option<PathBuf> {
-    Some(dirs::home_dir()?.join("Library/Logs/Graphite/capture.log"))
+    Some(crate::platform::log_dir()?.join("capture.log"))
 }
 
 /// Record `state` for `who` (e.g. who = "names", state = "Accessibility not allowed"),

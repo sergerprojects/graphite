@@ -46,7 +46,7 @@ fn python() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("GRAPHITE_PYTHON").map(PathBuf::from).filter(|p| p.exists()) {
         return Some(p);
     }
-    let p = graphite_dir()?.join("venv/bin/python");
+    let p = crate::platform::venv_python(&graphite_dir()?.join("venv"));
     p.exists().then_some(p)
 }
 
@@ -72,8 +72,7 @@ pub async fn start() {
     let spawned = Command::new(&py)
         .arg(&script)
         .env_clear()
-        .env("HOME", dirs::home_dir().unwrap_or_default())
-        .env("PATH", "/usr/bin:/bin")
+        .envs(crate::platform::base_env())
         // Saved voices are only used (and only saved) when the person switched that on.
         .env("GRAPHITE_VOICE_PROFILES", if crate::beta::remember_voices() { dirs::home_dir().unwrap_or_default().join(".graphite/voices.json") } else { std::path::PathBuf::from("/nonexistent") })
         .env("GRAPHITE_MAX_SPEAKERS", others.filter(|n| *n >= 2).map(|n| n.to_string()).unwrap_or_default())

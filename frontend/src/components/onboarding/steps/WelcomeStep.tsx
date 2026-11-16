@@ -2,21 +2,25 @@ import React from 'react';
 import { Download, Mic, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
+import { usePlatform } from '@/hooks/usePlatform';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 
 export function WelcomeStep() {
   const { goNext } = useOnboarding();
+  const platform = usePlatform();
 
-  const steps = [
+  const allSteps = [
     {
       icon: Download,
       title: 'Download the speech model',
-      detail: 'One time, about 670 MB. It runs on your Mac, so your calls stay private.',
+      detail: 'One time, about 670 MB. It runs on your computer, so your calls stay private.',
     },
     {
       icon: Mic,
       title: 'Allow the microphone and audio',
-      detail: 'macOS asks you. Click Allow both times so Graphite can hear you and the people on the call.',
+      detail: platform === 'macos'
+        ? 'macOS asks you. Click Allow both times so Graphite can hear you and the people on the call.'
+        : 'Graphite listens to your microphone and to the sound your computer plays, so it hears you and the people on the call.',
     },
     {
       icon: Eye,
@@ -24,6 +28,8 @@ export function WelcomeStep() {
       detail: 'For Google Meet only. Two switches in System Settings, and you can skip them.',
     },
   ];
+  // Names and screen snapshots read the call app through macOS Accessibility.
+  const steps = platform === 'macos' ? allSteps : allSteps.slice(0, 2);
 
   return (
     <OnboardingContainer
@@ -34,7 +40,7 @@ export function WelcomeStep() {
     >
       <div className="flex flex-col items-center space-y-8">
         <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-5">
-          <p className="text-sm font-medium text-gray-900">Setup takes three quick steps:</p>
+          <p className="text-sm font-medium text-gray-900">Setup takes {steps.length === 3 ? 'three' : 'two'} quick steps:</p>
           {steps.map((step, index) => {
             const Icon = step.icon;
             return (
