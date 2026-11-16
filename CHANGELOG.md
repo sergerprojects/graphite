@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.22
+- Share to Slack: a Slack button on every summary and a "Slack follow-up" chip in the live chat. Pick a channel or person (searched through the Slack connector in your Claude Code), choose Short post, Full summary or Follow-up, edit the message, then save it as a Slack draft (the default) or send it after a confirm. Nothing is stored in Graphite and no extra Slack login is needed.
+
 ## 0.9.21
 - Big calls: Meet's header clock ("4:03 PM") was read as a person called "PM" and a wrapper around the whole grid inherited the speaking marker, so everything said was filed under "PM". The clock is ignored and wrapper boxes that hold other tiles are no longer treated as people.
 

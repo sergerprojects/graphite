@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import { createPortal } from 'react-dom';
 import { askMeeting, ChatModel, ChatTurn } from '@/lib/chat';
 import { SavedPrompt, loadPrompts } from '@/lib/prompts';
+import { ShareToSlack } from '@/components/Slack/ShareToSlack';
 
 const MODELS: { value: ChatModel; label: string }[] = [
   { value: 'haiku', label: 'Fast' },
@@ -110,6 +111,20 @@ export function LiveChat({ getTranscript, notes, title, attendees }: Props) {
             {q.label}
           </button>
         ))}
+        <ShareToSlack
+          title={title}
+          attendees={attendees}
+          kinds={['followup', 'short']}
+          getBody={async () => `${notes.trim() ? `My notes:\n${notes.trim()}\n\n` : ''}Transcript:\n${getTranscript()}`}
+          trigger={open => (
+            <button
+              onClick={open}
+              className="rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              Slack follow-up
+            </button>
+          )}
+        />
       </div>
       <div className="flex items-center gap-2">
         <input

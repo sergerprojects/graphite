@@ -294,7 +294,10 @@ pub async fn call_mcp_tool(tool: &str, args: &serde_json::Value, timeout: Durati
     match results.into_iter().find(|r| r.tool == tool) {
         Some(r) if !r.is_error => Ok(r.text),
         Some(r) => Err(format!("The connector returned an error: {}", r.text.chars().take(200).collect::<String>())),
-        None => Err("The Google Calendar connector wasn't reachable. If it needs signing in, run /mcp in Claude Code and authorize google-calendar, then try again.".to_string()),
+        None => {
+            let server = tool.strip_prefix("mcp__").and_then(|t| t.split("__").next()).unwrap_or("connector");
+            Err(format!("The {server} connector wasn't reachable. If it needs signing in, run /mcp in Claude Code and authorize {server}, then try again."))
+        }
     }
 }
 

@@ -56,6 +56,7 @@ pub mod meeting_merge;
 pub mod indicator;
 pub mod meeting_alert;
 pub mod platform;
+pub mod slack;
 pub mod openrouter;
 pub mod parakeet_engine;
 pub mod state;
@@ -890,6 +891,9 @@ pub fn run() {
             calendar::calendar_refresh,
             calendar::calendar_event_for_meeting,
             chat::meeting_chat,
+            slack::slack_find,
+            slack::slack_compose,
+            slack::slack_post,
             chat::open_external,
             calendar::calendar_current_event,
             calendar::calendar_attach_to_running,

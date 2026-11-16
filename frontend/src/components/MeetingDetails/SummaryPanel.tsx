@@ -9,6 +9,7 @@ import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
+import { ShareToSlack } from '@/components/Slack/ShareToSlack';
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { toast } from 'sonner';
@@ -277,6 +278,18 @@ export function SummaryPanel({
                 isDirty={isSummaryDirty}
                 onSave={onSaveAll}
                 onCopy={onCopySummary}
+              />
+            </div>
+          )}
+          {hasSummary && !isSummaryLoading && (
+            <div className="flex-shrink-0">
+              <ShareToSlack
+                title={meetingTitle}
+                kinds={['short', 'full', 'followup']}
+                getBody={async () => {
+                  const md = (await summaryRef.current?.getMarkdown?.()) || '';
+                  return md || (typeof aiSummary?.markdown === 'string' ? aiSummary.markdown : '');
+                }}
               />
             </div>
           )}
