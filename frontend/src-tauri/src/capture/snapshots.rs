@@ -53,8 +53,16 @@ async fn run(app: AppHandle<Wry>) {
             folder = None;
             sharing = false;
         }
+        if !super::snapshots_enabled(&app) {
+            super::trace::note("snapshots", "off in Settings");
+            continue;
+        }
+        if !perms::screen_granted() {
+            super::trace::note("snapshots", "Screen Recording is not allowed for Graphite, so shared screens cannot be captured");
+        } else if !perms::accessibility_granted() {
+            super::trace::note("snapshots", "Accessibility is not allowed for Graphite");
+        }
         if crate::audio::recording_commands::is_recording_paused().await
-            || !super::snapshots_enabled(&app)
             || !perms::screen_granted()
             || !perms::accessibility_granted()
         {

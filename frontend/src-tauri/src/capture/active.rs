@@ -24,11 +24,19 @@ const TEAMS_MARKER: &str = "vdi-frame-occlusion";
 pub struct Tile {
     pub name: String,
     pub classes: HashSet<String>,
+    /// Size of the tile on screen; when a name appears twice (their video tile and the
+    /// "Name (Presenting)" box) the smaller one is the video tile.
+    pub area: f64,
 }
 
 fn rect_ok(f: &[f64; 4]) -> bool {
     let (w, h) = (f[2], f[3]);
     w >= 150.0 && h >= 100.0 && (1.0..=2.4).contains(&(w / h))
+}
+
+/// Two boxes that are the same place on screen (a few points of slack).
+fn same_rect(a: &[f64; 4], b: &[f64; 4]) -> bool {
+    a.iter().zip(b).all(|(x, y)| (x - y).abs() <= 3.0)
 }
 
 fn contains(outer: &[f64; 4], inner: &[f64; 4]) -> bool {
@@ -56,12 +64,16 @@ pub fn meet_tiles(page: &Node) -> Vec<Tile> {
     fn visit<'a>(n: &'a Node, path: &mut Vec<&'a Node>, found: &mut Vec<([i64; 4], String, f64, &'a Node)>) {
         if n.role == "AXStaticText" && plausible_name(&n.value) {
             if let Some(tf) = n.frame {
-                // nearest ancestor that looks like a tile and contains this label
-                if let Some(tile) = path
-                    .iter()
-                    .rev()
-                    .find(|a| a.frame.map(|f| rect_ok(&f) && contains(&f, &tf)).unwrap_or(false))
-                {
+                // nearest ancestor that looks like a tile and contains this label...
+                let near = path.iter().rposition(|a| a.frame.map(|f| rect_ok(&f) && contains(&f, &tf)).unwrap_or(false));
+                if let Some(mut i) = near {
+                    // ...then the outermost wrapper with the same rectangle: Meet puts the
+                    // "speaking" class on a wrapper around the tile, not on the tile's inner box.
+                    let base = path[i].frame.unwrap();
+                    while i > 0 && path[i - 1].frame.map(|f| same_rect(&f, &base)).unwrap_or(false) {
+                        i -= 1;
+                    }
+                    let tile = path[i];
                     let f = tile.frame.unwrap();
                     let key = [f[0] as i64, f[1] as i64, f[2] as i64, f[3] as i64];
                     found.push((key, n.value.trim().to_string(), tf[1], tile));
@@ -94,16 +106,30 @@ pub fn meet_tiles(page: &Node) -> Vec<Tile> {
             best.insert(*key, (text.clone(), *y, *node));
         }
     }
-    let mut tiles: Vec<Tile> = best
-        .values()
-        .map(|(name, _, node)| {
-            let mut classes = HashSet::new();
-            all_classes(node, &mut classes);
-            Tile { name: name.clone(), classes }
-        })
-        .collect();
+    let mut tiles: Vec<Tile> = Vec::new();
+    for (name, _, node) in best.values() {
+        let mut classes = HashSet::new();
+        all_classes(node, &mut classes);
+        let f = node.frame.unwrap_or_default();
+        let name = plain_name(name);
+        let tile = Tile { name: name.clone(), classes, area: f[2] * f[3] };
+        match tiles.iter_mut().find(|t| t.name == name) {
+            Some(existing) if tile.area < existing.area => *existing = tile,
+            Some(_) => {}
+            None => tiles.push(tile),
+        }
+    }
     tiles.sort_by(|a, b| a.name.cmp(&b.name));
     tiles
+}
+
+/// "Alex Morgan (Presenting, annotating)" / "Alex Morgan (You)" -> "Alex Morgan".
+fn plain_name(raw: &str) -> String {
+    let t = raw.trim();
+    match t.rfind(" (") {
+        Some(i) if t.ends_with(')') => t[..i].trim().to_string(),
+        _ => t.to_string(),
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -259,6 +285,37 @@ mod tests {
         let names: Vec<String> = meet_tiles(&p).into_iter().map(|t| t.name).collect();
         assert!(!names.contains(&"Pin".to_string()));
         assert_eq!(names.len(), 4);
+    }
+
+    #[test]
+    fn the_marker_on_a_wrapper_around_the_tile_still_counts() {
+        // Meet wraps each tile in boxes of the same size; the speaking class sits on the outer one.
+        let wrap = |x: f64, name: &str, mark: bool| {
+            let inner = tile(x, 0.0, name, &["JHK7jb"]);
+            let classes: &[&str] = if mark { &["v5h6Xc"] } else { &[] };
+            n("AXGroup", "", Some([x, 0.0, 420.0, 340.0]), classes, vec![inner])
+        };
+        let p = page(vec![wrap(0.0, "Ana Park", false), wrap(430.0, "Cara Diaz", true), wrap(860.0, "Dev Patel", false)]);
+        let mut t = MarkerTracker::default();
+        assert_eq!(t.observe(&meet_tiles(&p)), vec!["Cara Diaz".to_string()]);
+    }
+
+    #[test]
+    fn a_presenting_box_and_the_video_tile_are_one_person() {
+        // The speaker's video tile and the big "Name (Presenting)" region both carry the marker.
+        let video = tile(0.0, 0.0, "Cara Diaz", &["JHK7jb", "v5h6Xc"]);
+        let mut big = tile(0.0, 400.0, "Cara Diaz (Presenting, annotating)", &["JHK7jb", "v5h6Xc"]);
+        big.frame = Some([0.0, 400.0, 1200.0, 700.0]);
+        for c in big.children.iter_mut() {
+            if let Some(f) = c.frame.as_mut() {
+                f[1] += 380.0;
+            }
+        }
+        let p = page(vec![video, big, tile(430.0, 0.0, "Ana Park", &["JHK7jb"]), tile(860.0, 0.0, "Dev Patel", &["JHK7jb"])]);
+        let tiles = meet_tiles(&p);
+        assert_eq!(tiles.iter().filter(|t| t.name == "Cara Diaz").count(), 1);
+        let mut t = MarkerTracker::default();
+        assert_eq!(t.observe(&tiles), vec!["Cara Diaz".to_string()]);
     }
 
     #[test]

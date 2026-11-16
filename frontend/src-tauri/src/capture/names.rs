@@ -133,10 +133,15 @@ async fn run(app: AppHandle<Wry>) {
             folder = None;
             dirty = false;
         }
-        if crate::audio::recording_commands::is_recording_paused().await
-            || !super::names_enabled(&app)
-            || !perms::accessibility_granted()
-        {
+        if crate::audio::recording_commands::is_recording_paused().await {
+            continue;
+        }
+        if !super::names_enabled(&app) {
+            super::trace::note("names", "off in Settings");
+            continue;
+        }
+        if !perms::accessibility_granted() {
+            super::trace::note("names", "Accessibility is not allowed for Graphite, so call names cannot be read");
             continue;
         }
         if folder.is_none() {
@@ -147,7 +152,11 @@ async fn run(app: AppHandle<Wry>) {
                 .map(PathBuf::from);
         }
         let Some(dir) = folder.clone() else { continue };
-        let Some((speaking, listed)) = read_speaking(&mut tracker) else { continue };
+        let Some((speaking, listed)) = read_speaking(&mut tracker) else {
+            super::trace::note("names", "no supported call found on screen");
+            continue;
+        };
+        super::trace::note("names", &format!("watching a call: {} listed, {} speaking now", roster.len().max(listed.len()), speaking.len()));
         live_publish(&speaking);
         for n in listed {
             if !roster.contains(&n) {
@@ -506,5 +515,45 @@ mod voice_pass_tests {
         assert_eq!(who["e"], "Cara Diaz");
         assert_eq!(who["f"], "You", "your own lines are left alone");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Manual check against a live call (needs Accessibility for the terminal):
+/// `cargo test --lib live_meet_probe -- --ignored --nocapture`
+#[cfg(test)]
+mod live_probe {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn live_meet_probe() {
+        let pid = ax::find_pid(CallApp::Chrome);
+        println!("chrome pid: {pid:?}");
+        let Some(pid) = pid else { return };
+        let t = Instant::now();
+        let windows = ax::snapshot_windows(pid, true, &Limits::poll());
+        println!("windows: {} in {:?}, nodes: {:?}", windows.len(), t.elapsed(), windows.iter().map(|w| w.count()).collect::<Vec<_>>());
+        for w in &windows {
+            println!("  window role={} title={:?} meet_page={}", w.role, w.title, meet::meet_page(w).is_some());
+        }
+        for w in &windows {
+            if let Some(page) = meet::meet_page(w) {
+                println!("  share: {:?}", meet::detect(w));
+                let tiles = active::meet_tiles(page);
+                println!("  tiles: {}", tiles.len());
+                for t in &tiles {
+                    println!("    {:30} classes={} v5h6Xc={} Oaajhc={}", t.name, t.classes.len(), t.classes.contains("v5h6Xc"), t.classes.contains("Oaajhc"));
+                }
+            }
+        }
+        let mut tracker = active::MarkerTracker::default();
+        for round in 0..6 {
+            if let Some((who, listed)) = read_speaking(&mut tracker) {
+                println!("round {round}: speaking={who:?} roster={}", listed.len());
+            } else {
+                println!("round {round}: no call found");
+            }
+            std::thread::sleep(Duration::from_millis(700));
+        }
     }
 }

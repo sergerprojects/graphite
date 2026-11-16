@@ -13,6 +13,7 @@ pub mod names;
 pub mod screen;
 pub mod snapshots;
 pub mod speakers;
+pub mod trace;
 pub mod voices;
 pub mod store;
 pub mod perms;

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { ChevronUp, Copy, GlobeIcon, Minus } from 'lucide-react';
 import { MeetingHeader } from '@/components/Live/MeetingHeader';
+import { CaptureNotice } from '@/components/Live/CaptureNotice';
 import { LiveChat } from '@/components/Live/LiveChat';
 import { ImageStrip } from '@/components/Images/ImageStrip';
 import { NotesBox } from '@/components/Live/NotesBox';
@@ -233,6 +234,7 @@ export function TranscriptPanel({
         <>
           <div className="flex justify-center px-4 pt-8">
             <div className="w-2/3 max-w-[750px]">
+              <CaptureNotice />
               <MeetingHeader
                 title={displayTitle}
                 onTitleChange={setMeetingTitle}

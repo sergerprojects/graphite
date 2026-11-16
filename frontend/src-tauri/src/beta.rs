@@ -224,7 +224,7 @@ pub async fn app_diagnostics(app: AppHandle<Wry>) -> String {
     let v = voice_models_status().await;
     let transcribing = crate::audio::recording_commands::is_recording().await;
     format!(
-        "Graphite {}\nmacOS {} ({})\nAccessibility: {}\nScreen Recording: {}\nClaude Code installed: {}\nVoice engine: {} / voice model: {}\nRemember voices: {}\nCurrently transcribing: {}\nCalendar: {}\n",
+        "Graphite {}\nmacOS {} ({})\nAccessibility: {}\nScreen Recording: {}\nClaude Code installed: {}\nVoice engine: {} / voice model: {}\nRemember voices: {}\nCurrently transcribing: {}\nCalendar: {}\n\nRecent capture log:\n{}\n",
         app.package_info().version,
         sw_vers(),
         std::env::consts::ARCH,
@@ -236,6 +236,7 @@ pub async fn app_diagnostics(app: AppHandle<Wry>) -> String {
         remember_voices(),
         transcribing,
         { let c = crate::calendar::calendar_status().await; format!("{} ({})", if c.enabled { "connected" } else { "not connected" }, c.source.unwrap_or_default()) },
+        crate::capture::trace::tail(25),
     )
 }
 
