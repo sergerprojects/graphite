@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.12
+- Screen-share snapshots no longer include the strip of people's video (it is cut off, so pictures show only the shared content and are kept when the content changes); shared-window matching is sturdier.
+- Buttons and slide text are no longer mistaken for people's names. Unlabelled call audio is named live from who the call app marks as speaking.
+- Continue on a double-booked meeting continues the one you chose.
+- Images appear as a filmstrip with a "Taking snapshots" tile while the meeting runs.
+
 ## 0.9.11
 - Speaker names now work in a real group call: the speaking marker is found on the tile's outer wrapper, and a presenter's video tile and "Presenting" box count as one person.
 - A notice while transcribing when macOS has not allowed Accessibility or Screen Recording (names and snapshots need them), with a Fix button.
