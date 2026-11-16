@@ -84,17 +84,17 @@ fn all_classes(n: &Node, out: &mut HashSet<String>) {
 /// under it (their moving video would otherwise end up in every picture).
 pub fn without_tile_strip(stage: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
     let mut out = stage;
-    let (mid_y, right_x) = (stage[1] + stage[3] * 0.5, stage[0] + stage[2] * 0.7);
-    let inside = |t: &Tile| {
-        let cx = t.rect[0] + t.rect[2] / 2.0;
-        let cy = t.rect[1] + t.rect[3] / 2.0;
-        cx >= stage[0] && cx <= stage[0] + stage[2] && cy >= stage[1] && cy <= stage[1] + stage[3]
-    };
-    if let Some(top) = tiles.iter().filter(|t| inside(t) && t.rect[1] >= mid_y).map(|t| t.rect[1]).reduce(f64::min) {
-        out[3] = (top - 2.0 - stage[1]).max(0.0);
+    let right_from = stage[0] + stage[2] * 0.6;
+    let bottom_from = stage[1] + stage[3] * 0.6;
+    let (right_edge, bottom_edge) = (stage[0] + stage[2] * 1.1, stage[1] + stage[3] * 1.1);
+    // A column of tiles down the right side (any height), else a row along the bottom.
+    let column = |t: &&Tile| t.rect[0] >= right_from - 4.0 && t.rect[0] < right_edge;
+    let row = |t: &&Tile| t.rect[1] >= bottom_from - 4.0 && t.rect[1] < bottom_edge && t.rect[0] < right_from;
+    if let Some(x) = tiles.iter().filter(column).map(|t| t.rect[0]).reduce(f64::min) {
+        out[2] = (x - 2.0 - stage[0]).max(0.0);
     }
-    if let Some(left) = tiles.iter().filter(|t| inside(t) && t.rect[0] >= right_x && t.rect[1] < mid_y).map(|t| t.rect[0]).reduce(f64::min) {
-        out[2] = (left - 2.0 - stage[0]).max(0.0);
+    if let Some(y) = tiles.iter().filter(row).map(|t| t.rect[1]).reduce(f64::min) {
+        out[3] = (y - 2.0 - stage[1]).max(0.0);
     }
     out
 }
@@ -329,6 +329,9 @@ mod tests {
         // a column of tiles down the right edge
         let r = without_tile_strip(stage, &[tile(1400.0, 100.0), tile(1400.0, 230.0)]);
         assert_eq!(r[2], 1398.0);
+        // a full-height column down the right edge cuts the width only (not the height)
+        let column: Vec<Tile> = (0..5).map(|i| tile(1400.0, 100.0 + 200.0 * i as f64)).collect();
+        assert_eq!(without_tile_strip(stage, &column), [0.0, 0.0, 1398.0, 1000.0]);
         // no strip: unchanged
         assert_eq!(without_tile_strip(stage, &[tile(300.0, 100.0)]), stage);
     }

@@ -174,6 +174,7 @@ pub fn start_transcription_task<R: Runtime>(
                                 }
                             } else if chunk_speaker.starts_with("Speaker ") {
                                 if let Some(name) = crate::capture::names::live_name_for(&chunk_speaker) {
+                                    crate::capture::names::announce_voice_name(&app_clone, &chunk_speaker, &name);
                                     chunk_speaker = name;
                                 }
                             }

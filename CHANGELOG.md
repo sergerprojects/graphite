@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.13
+- Snapshots: a column of people down the side of a share is cut off as well as a row along the bottom.
+- Speaker names: a voice that lines up with the same person twice gets their name straight away, and "Speaker N" fills in as that name (earlier lines are renamed too).
+- Double-booked slots: the call on screen ("Meet - <meeting>") now decides which calendar event is meant.
+
 ## 0.9.12
 - Screen-share snapshots no longer include the strip of people's video (it is cut off, so pictures show only the shared content and are kept when the content changes); shared-window matching is sturdier.
 - Buttons and slide text are no longer mistaken for people's names. Unlabelled call audio is named live from who the call app marks as speaking.

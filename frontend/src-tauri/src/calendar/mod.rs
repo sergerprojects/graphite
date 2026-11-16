@@ -593,6 +593,23 @@ pub fn one_other_name(event: &CalendarEvent) -> Option<String> {
         .then(|| people::lookup(&others[0].email).unwrap_or_else(|| others[0].name.trim().to_string()))
 }
 
+static CALL_TITLE: std::sync::Mutex<Option<(String, std::time::Instant)>> = std::sync::Mutex::new(None);
+
+/// The title of the call on screen ("Meet - Leaders Weekly" gives "Leaders Weekly"), noted by
+/// the call watchers so a double-booked slot can pick the meeting you are actually in.
+pub fn set_call_title(title: &str) {
+    let t = title.trim().strip_prefix("Meet - ").unwrap_or(title.trim()).trim();
+    if !t.is_empty() {
+        *CALL_TITLE.lock().unwrap_or_else(|e| e.into_inner()) = Some((t.to_string(), std::time::Instant::now()));
+    }
+}
+
+/// The call title noted in the last 20 minutes, if any.
+pub fn call_title() -> Option<String> {
+    let g = CALL_TITLE.lock().unwrap_or_else(|e| e.into_inner());
+    g.as_ref().filter(|(_, at)| at.elapsed() < std::time::Duration::from_secs(20 * 60)).map(|(t, _)| t.clone())
+}
+
 /// Should the poller prompt for this event right now?
 pub fn should_prompt(event: &CalendarEvent, now: DateTime<Utc>) -> bool {
     if event.video_url.is_none() {

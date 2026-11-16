@@ -175,19 +175,26 @@ pub struct AutoRecorder {
     session: Option<AutoSession>,
 }
 
-/// Video event whose [start-5min, end+5min] contains now; closest start wins.
+/// Video event whose [start-5min, end+5min] contains now; closest start wins. When the call
+/// on screen names itself (a Meet tab titled "Meet - <meeting>"), the event with that
+/// name wins over the others: that is how a double-booked slot picks the right meeting.
 pub fn matching_event(events: &[CalendarEvent], now: DateTime<Utc>) -> Option<&CalendarEvent> {
+    pick_event(events, now, super::call_title().as_deref())
+}
+
+pub fn pick_event<'a>(events: &'a [CalendarEvent], now: DateTime<Utc>, call_title: Option<&str>) -> Option<&'a CalendarEvent> {
+    let named = |e: &CalendarEvent| call_title.map(|t| e.summary.trim().eq_ignore_ascii_case(t.trim())).unwrap_or(false);
     events
         .iter()
         .filter(|e| e.video_url.is_some())
         .filter_map(|e| e.bounds().map(|b| (e, b)))
         .filter(|(_, (s, end))| *s - MATCH_SLACK <= now && now <= *end + MATCH_SLACK)
-        // Concurrent events: prefer ones with other people on the invite, then the
-        // closest start (to the minute), then the smaller meeting (a 1:1 over a
-        // broadcast you were merely invited to).
+        // Concurrent events: the one the call is titled after, then ones with other people on
+        // the invite, then the closest start (to the minute), then the smaller meeting (a 1:1
+        // over a broadcast you were merely invited to).
         .min_by_key(|(e, (s, _))| {
             let others = e.attendees.iter().filter(|a| !a.is_self).count();
-            (others == 0, (*s - now).num_seconds().abs() / 120, e.attendees.len())
+            (!named(e), others == 0, (*s - now).num_seconds().abs() / 120, e.attendees.len())
         })
         .map(|(e, _)| e)
 }
@@ -591,6 +598,24 @@ mod concurrent_pick_tests {
             description: None,
             video_url: Some("https://meet.google.com/x".to_string()),
         }
+    }
+
+    #[test]
+    fn the_call_on_screen_decides_a_double_booked_slot() {
+        let now: DateTime<Utc> = "2026-11-13T17:01:00Z".parse().unwrap();
+        let mk = |id: &str, name: &str, people: usize| {
+            let mut e = ev(id, 30, &[("me", true)]);
+            e.summary = name.to_string();
+            for i in 0..people {
+                e.attendees.push(CalendarAttendee { name: format!("p{i}"), email: format!("p{i}@x.com"), response_status: None, organizer: false, is_self: false });
+            }
+            e
+        };
+        let events = vec![mk("big", "Weekly Staff Call", 60), mk("small", "Leaders Weekly", 12)];
+        assert_eq!(pick_event(&events, now, None).unwrap().id, "small", "without a hint: the smaller meeting");
+        assert_eq!(pick_event(&events, now, Some("Weekly Staff Call")).unwrap().id, "big");
+        assert_eq!(pick_event(&events, now, Some("leaders weekly ")).unwrap().id, "small");
+        assert_eq!(pick_event(&events, now, Some("Something else")).unwrap().id, "small");
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event';
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { PermissionWarning } from '@/components/PermissionWarning';
 import { UpcomingMeetings } from '@/components/Calendar/UpcomingMeetings';
@@ -140,6 +141,20 @@ export function TranscriptPanel({
     }, 700);
     return () => clearTimeout(t);
   }, [notes, isRecording]);
+
+  // The call app named a voice: fill in "Speaker N = person" (earlier lines are renamed too),
+  // unless you already chose a name for it.
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    let gone = false;
+    listen<{ label: string; name: string }>('speaker-auto-named', ({ payload }) => {
+      setSpeakerNames(m => (m[payload.label] ? m : { ...m, [payload.label]: payload.name }));
+    }).then(f => (gone ? f() : (un = f)));
+    return () => {
+      gone = true;
+      un?.();
+    };
+  }, []);
 
   // Keep the "Speaker N = person" choices with the recording.
   useEffect(() => {

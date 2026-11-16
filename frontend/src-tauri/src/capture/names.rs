@@ -25,7 +25,7 @@ pub const FILE: &str = "active_speakers.json";
 // ---------------------------------------------------------------------------
 
 const FRESH: Duration = Duration::from_millis(2500);
-const MIN_OBS: u32 = 3;
+const MIN_OBS: u32 = 2;
 const MIN_SHARE: f64 = 0.7;
 
 #[derive(Default)]
@@ -39,6 +39,8 @@ struct Live {
     mine: HashMap<String, u32>,
     /// Times a name was lit while a remote voice was talking.
     remote: HashMap<String, u32>,
+    /// Voices whose name has already been announced to the screen.
+    announced: std::collections::HashSet<String>,
 }
 
 static LIVE: Mutex<Option<Live>> = Mutex::new(None);
@@ -105,6 +107,16 @@ pub fn live_name_for_chunk(secs: f64) -> Option<String> {
         let (name, n) = counts.into_iter().max_by_key(|(_, n)| *n)?;
         (marked >= 3 && n as f64 / marked as f64 >= 0.8).then(|| name.to_string())
     })
+}
+
+/// Tell the screen that voice "Speaker 2" is `name`, once, so lines already on screen are
+/// renamed too (the live "who is who" picker fills itself in).
+pub fn announce_voice_name<R: tauri::Runtime>(app: &AppHandle<R>, voice: &str, name: &str) {
+    let first = with_live(|l| l.announced.insert(format!("{voice}\u{1}{name}")));
+    if first {
+        use tauri::Emitter;
+        let _ = app.emit("speaker-auto-named", serde_json::json!({ "label": voice, "name": name }));
+    }
 }
 
 /// A remote voice ("Speaker 2") just produced a line. Returns the real name once that
@@ -213,6 +225,7 @@ pub fn read_speaking(tracker: &mut active::MarkerTracker) -> Option<(Vec<String>
     if let Some(pid) = ax::find_pid(CallApp::Chrome) {
         let windows = ax::snapshot_windows(pid, true, &Limits::poll());
         if let Some((w, page)) = windows.iter().find_map(|w| meet::meet_page(w).map(|p| (w, p))) {
+            crate::calendar::set_call_title(&page.title);
             let tiles = active::meet_tiles(page);
             let mut who = tracker.observe(&tiles);
             if who.is_empty() {
@@ -479,8 +492,7 @@ mod live_tests {
         // A remote voice lines up with Noah three times.
         assert_eq!(live_name_for("Speaker 1"), None);
         live_publish(&["Ana Park".to_string()]);
-        assert_eq!(live_name_for("Speaker 1"), None);
-        assert_eq!(live_name_for("Speaker 1"), None);
+        assert_eq!(live_name_for("Speaker 1"), None, "one sighting is not enough");
         assert_eq!(live_name_for("Speaker 1"), Some("Ana Park".to_string()));
         // While you are lit, a remote line never learns your name.
         live_publish(&["Alex Morgan".to_string()]);
@@ -592,6 +604,9 @@ mod live_probe {
                 println!("  share: {:?}", meet::detect(w));
                 let tiles = active::meet_tiles(page);
                 println!("  tiles: {}", tiles.len());
+                if let Some(sh) = meet::detect(w) {
+                    println!("  stage {:?}\n  region {:?}", sh.stage, active::without_tile_strip(sh.stage, &tiles));
+                }
                 for t in &tiles {
                     println!("    {:30} classes={} v5h6Xc={} Oaajhc={}", t.name, t.classes.len(), t.classes.contains("v5h6Xc"), t.classes.contains("Oaajhc"));
                 }
