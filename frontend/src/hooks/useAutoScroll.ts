@@ -57,6 +57,7 @@ export function useAutoScroll({
     const isProgrammaticScrollRef = useRef(false);
     // Track previous segment count to detect new segments
     const prevSegmentCountRef = useRef(segments.length);
+    const prevSignatureRef = useRef('');
 
     /**
      * Check if the user is scrolled near the bottom
@@ -136,22 +137,17 @@ export function useAutoScroll({
         }
 
         const segmentCount = segments.length;
-        const prevCount = prevSegmentCountRef.current;
-        const hasNewSegments = segmentCount > prevCount;
-
-        // Update the ref for next comparison
+        // New segment, or the last one grew (text is merged / re-labelled in place).
+        const last = segments[segmentCount - 1];
+        const signature = `${segmentCount}:${last?.id ?? ''}:${last?.text?.length ?? 0}`;
+        const changed = signature !== prevSignatureRef.current;
+        prevSignatureRef.current = signature;
         prevSegmentCountRef.current = segmentCount;
 
-        // Only scroll if new segments arrived AND user is currently at bottom
-        // Check isNearBottom() immediately to avoid race conditions with the debounced scroll handler
-        if (hasNewSegments && autoScrollRef.current && isRecording && !isPaused && segmentCount > 0) {
-            // Check if user is at bottom RIGHT NOW before scrolling
-            const isCurrentlyAtBottom = isNearBottom();
-            if (!isCurrentlyAtBottom) {
-                // User has scrolled up - don't auto-scroll
-                return;
-            }
-
+        // Follow the meeting unless the user scrolled up (autoScrollRef tracks that). We do NOT
+        // measure the distance from the bottom here: new content has already made the page taller,
+        // so a tall or fast update would look "scrolled up" and the view would stop following.
+        if (changed && autoScrollRef.current && isRecording && !isPaused && segmentCount > 0) {
             isProgrammaticScrollRef.current = true;
 
             if (useVirtualization && virtualizer) {
@@ -175,6 +171,24 @@ export function useAutoScroll({
             }, 150);
         }
     }, [segments.length, isRecording, isPaused, useVirtualization, virtualizer, scrollRef, isNearBottom, disableAutoScroll]);
+
+    // Keep following when the content gets taller without a new segment (typing animation,
+    // the "Listening..." line, speaker labels appearing).
+    useEffect(() => {
+        if (disableAutoScroll || !isRecording || isPaused) return;
+        const container = scrollRef.current;
+        if (!container || typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(() => {
+            if (!autoScrollRef.current) return;
+            isProgrammaticScrollRef.current = true;
+            container.scrollTop = container.scrollHeight;
+            setTimeout(() => {
+                isProgrammaticScrollRef.current = false;
+            }, 100);
+        });
+        Array.from(container.children).forEach(child => observer.observe(child));
+        return () => observer.disconnect();
+    }, [disableAutoScroll, isRecording, isPaused, scrollRef]);
 
     // Auto-scroll to active segment (when clicking on search results, etc.)
     useEffect(() => {

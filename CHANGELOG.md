@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.23
+- The live transcript keeps following the meeting. It used to stop scrolling when an update made the page taller than 100 px at once (a long line, several lines together, or text growing in place), so you had to scroll down by hand. It now follows whenever you haven't scrolled up yourself.
+
 ## 0.9.22
 - Share to Slack: a Slack button on every summary and a "Slack follow-up" chip in the live chat. Pick a channel or person (searched through the Slack connector in your Claude Code), choose Short post, Full summary or Follow-up, edit the message, then save it as a Slack draft (the default) or send it after a confirm. Nothing is stored in Graphite and no extra Slack login is needed.
 
