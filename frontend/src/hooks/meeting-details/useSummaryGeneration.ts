@@ -446,7 +446,7 @@ export function useSummaryGeneration({
     toast.error(message);
   }, []);
 
-  const handleGenerateSummary = useCallback(async (customPrompt: string = '') => {
+  const handleGenerateSummary = useCallback(async (customPrompt: string = '', isRegeneration: boolean = false) => {
     if (isModelConfigLoading) {
       toast.info('Loading model configuration, please wait...');
       return;
@@ -492,6 +492,7 @@ export function useSummaryGeneration({
     await processSummary({
       ...buildSummaryTranscriptPayload(allTranscripts),
       customPrompt,
+      isRegeneration,
     });
   }, [
     buildSummaryTranscriptPayload,

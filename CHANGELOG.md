@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.27
+- "Update from my edits" on the summary page: fix a name or reword the notes yourself, then click it (optionally add what else should change) and Graphite rewrites the whole summary from the transcript, keeping your corrections everywhere they apply. If it fails, your previous notes come back.
+
 ## 0.9.26
 - Snapshots are only taken of things that are presented. When Meet still had its presentation area open after a share ended, the pictures were just the people's faces; now a picture that is mostly video tiles is skipped.
 - Delete snapshots from the strip: hover a picture and click the bin, or use Delete all (asks first).

@@ -9,6 +9,7 @@ import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
+import { RefineNotes } from './RefineNotes';
 import { ShareToSlack } from '@/components/Slack/ShareToSlack';
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
@@ -45,7 +46,7 @@ interface SummaryPanelProps {
   modelConfig: ModelConfig;
   setModelConfig: (config: ModelConfig | ((prev: ModelConfig) => ModelConfig)) => void;
   onSaveModelConfig: (config?: ModelConfig) => Promise<void>;
-  onGenerateSummary: (customPrompt: string) => Promise<void>;
+  onGenerateSummary: (customPrompt: string, isRegeneration?: boolean) => Promise<void>;
   onStopGeneration: () => void;
   customPrompt: string;
   onSaveSummary: (summary: MeetingSummary) => Promise<void>;
@@ -271,6 +272,14 @@ export function SummaryPanel({
             />
           </div>
 
+          {hasSummary && !isSummaryLoading && transcripts.length > 0 && (
+            <div className="flex-shrink-0">
+              <RefineNotes
+                getMarkdown={async () => (await summaryRef.current?.getMarkdown?.()) || ''}
+                onRefine={prompt => onGenerateSummary(prompt, true)}
+              />
+            </div>
+          )}
           {hasSummary && !isSummaryLoading && (
             <div className="flex-shrink-0">
               <SummaryUpdaterButtonGroup
