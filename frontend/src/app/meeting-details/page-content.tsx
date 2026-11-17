@@ -18,6 +18,7 @@ import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
 import { useConfig } from '@/contexts/ConfigContext';
+import { parseSummaryContent } from '@/lib/summary-content';
 
 export default function PageContent({
   meeting,
@@ -114,6 +115,14 @@ export default function PageContent({
       console.error('Failed to save model config:', error);
       toast.error('Failed to save model settings');
     }
+  };
+
+  // After a word fix or an undo the database changed behind the editor: read it all again.
+  const reloadMeeting = async () => {
+    const existing = await invoke<SummaryProcessResponse>('api_get_summary', { meetingId: meeting.id });
+    meetingData.setAiSummary(parseSummaryContent(existing.data));
+    await onRefetchTranscripts?.();
+    await onMeetingUpdated?.();
   };
 
   const summaryGeneration = useSummaryGeneration({
@@ -243,6 +252,7 @@ export default function PageContent({
               onDirtyChange={meetingData.setIsSummaryDirty}
               summaryError={summaryGeneration.summaryError}
               onRegenerateSummary={summaryGeneration.handleRegenerateSummary}
+              onReloadMeeting={reloadMeeting}
               getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
               availableTemplates={templates.availableTemplates}
               selectedTemplate={templates.selectedTemplate}

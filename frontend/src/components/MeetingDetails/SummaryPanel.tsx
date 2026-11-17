@@ -9,7 +9,7 @@ import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
-import { RefineNotes } from './RefineNotes';
+import { NoteTools } from './NoteTools';
 import { ShareToSlack } from '@/components/Slack/ShareToSlack';
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
@@ -54,6 +54,8 @@ interface SummaryPanelProps {
   onDirtyChange: (isDirty: boolean) => void;
   summaryError: string | null;
   onRegenerateSummary: () => Promise<void>;
+  /** Re-read the notes, transcript and title after a fix or undo. */
+  onReloadMeeting: () => Promise<void>;
   getSummaryStatusMessage: (status: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error') => string;
   availableTemplates: Array<{ id: string, name: string, description: string }>;
   selectedTemplate: string;
@@ -84,6 +86,7 @@ export function SummaryPanel({
   onDirtyChange,
   summaryError,
   onRegenerateSummary,
+  onReloadMeeting,
   getSummaryStatusMessage,
   availableTemplates,
   selectedTemplate,
@@ -274,9 +277,12 @@ export function SummaryPanel({
 
           {hasSummary && !isSummaryLoading && transcripts.length > 0 && (
             <div className="flex-shrink-0">
-              <RefineNotes
+              <NoteTools
+                meetingId={meeting.id}
                 getMarkdown={async () => (await summaryRef.current?.getMarkdown?.()) || ''}
-                onRefine={prompt => onGenerateSummary(prompt, true)}
+                saveEdits={async () => { await summaryRef.current?.saveSummary?.(); }}
+                onGenerate={prompt => onGenerateSummary(prompt, true)}
+                onReload={onReloadMeeting}
               />
             </div>
           )}

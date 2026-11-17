@@ -523,6 +523,11 @@ impl SummaryService {
 
         // The notes the person typed during the meeting blend into the generated notes.
         let custom_prompt = merge_notes_into_prompt(&custom_prompt, Self::read_user_notes(&pool, &meeting_id).await.as_deref());
+        // The person's own spellings (company and product names) are used as they write them.
+        let custom_prompt = {
+            let words = crate::corrections::vocabulary_prompt(&crate::corrections::vocabulary(&_app));
+            if words.is_empty() { custom_prompt } else { format!("{}\n\n{}", custom_prompt.trim(), words).trim().to_string() }
+        };
 
         let cache_source = build_summary_cache_source(
             &text,

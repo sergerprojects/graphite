@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.28
+- Fix a word everywhere: click "Fix a word", type the wrong and right spelling (Jetmine → Jumpmind) and it is changed in this meeting's transcript, notes and title in one go. It can remember the right spelling for next time.
+- My words: a saved list of names and terms. Every new summary and every "Update from my edits" spells them the way you do.
+- Undo: before "Update from my edits" or "Fix a word" changes your notes, the old version is kept. Click Undo to get it back (click again to switch back).
+
 ## 0.9.27
 - "Update from my edits" on the summary page: fix a name or reword the notes yourself, then click it (optionally add what else should change) and Graphite rewrites the whole summary from the transcript, keeping your corrections everywhere they apply. If it fails, your previous notes come back.
 

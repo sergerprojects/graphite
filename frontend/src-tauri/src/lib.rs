@@ -43,6 +43,7 @@ pub mod beta;
 pub mod calendar;
 pub mod capture;
 pub mod config;
+pub mod corrections;
 pub mod console_utils;
 pub mod database;
 pub mod notifications;
@@ -949,6 +950,12 @@ pub fn run() {
             beta::install_voice_models,
             beta::app_diagnostics,
             beta::open_graphite_folder,
+            corrections::get_vocabulary,
+            corrections::set_vocabulary,
+            corrections::fix_word_everywhere,
+            corrections::backup_summary,
+            corrections::has_summary_backup,
+            corrections::restore_summary_backup,
             capture::edit::delete_transcript_segment,
             capture::edit::relabel_speaker,
             calendar::autorecord::set_ignored_apps,
