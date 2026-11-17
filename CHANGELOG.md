@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.25
+- New summary model: Qwen 3.5 9B (Best Quality). In a blind test on three real meetings it made fewer mistakes and covered more than the 4B, at about 1.5x the time (about a minute for a 30-minute meeting). It is a 5.4 GB download and suits Macs with 16 GB or more. Pick it in Settings; the 4B stays the default.
+- Summaries are stricter about who owns an action item: only names that appear in the transcript, "Not stated" when no owner or due date was given, no invented numbers, company names or timestamps, and ideas are no longer written up as decisions.
+
 ## 0.9.24
 - A meeting keeps its calendar title (or the name you typed). Before, finishing the summary replaced it with an AI-written title, so the sidebar and the Home list disagreed. Only meetings still called "Meeting 17_11_26_..." are named by the summary now.
 

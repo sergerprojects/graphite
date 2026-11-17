@@ -187,7 +187,20 @@ pub fn get_available_models() -> Vec<ModelDef> {
             context_size: 32768,
             layer_count: 32,
             sampling: SamplingParams::qwen35_summary(vec!["<|im_end|>".to_string()]),
-            description: "High-quality Qwen 3.5 model for built-in summaries. Best local Qwen option in the current lineup.".to_string(),
+            description: "Fast, good-quality Qwen 3.5 model for built-in summaries. The default for most Macs.".to_string(),
+        },
+        // Qwen 3.5 9B - Best quality tier (about 1.5x slower than the 4B; wants 16 GB+ of memory)
+        ModelDef {
+            name: "qwen3.5:9b".to_string(),
+            display_name: "Qwen 3.5 9B (Best Quality)".to_string(),
+            gguf_file: "Qwen3.5-9B-Q4_K_M.gguf".to_string(),
+            template: "qwen3.5_nonthinking".to_string(),
+            download_url: "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf".to_string(),
+            size_mb: 5418,
+            context_size: 32768,
+            layer_count: 32,
+            sampling: SamplingParams::qwen35_summary(vec!["<|im_end|>".to_string()]),
+            description: "Best local quality for built-in summaries: fuller coverage and cleaner action items. About 1.5x slower than the 4B. Best on Macs with 16 GB or more.".to_string(),
         },
         // Gemma 3 4B - Legacy alternative retained for users who prefer Gemma output.
         ModelDef {
@@ -330,6 +343,15 @@ pub const GENERATION_TIMEOUT_SECS: u64 = 900; // 15 minutes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn qwen_9b_is_registered() {
+        let m = get_model_by_name("qwen3.5:9b").expect("qwen 9b model should exist");
+        assert_eq!(m.gguf_file, "Qwen3.5-9B-Q4_K_M.gguf");
+        assert_eq!(m.template, "qwen3.5_nonthinking");
+        assert_eq!(m.layer_count, 32);
+        assert!(m.download_url.ends_with("Qwen3.5-9B-Q4_K_M.gguf"));
+    }
 
     #[test]
     fn qwen35_models_are_registered_with_expected_metadata() {

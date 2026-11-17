@@ -242,6 +242,10 @@ fn build_final_report_system_prompt(
 6. Output **only** the completed Markdown report.
 7. Do not include reasoning, thinking, self-correction, decision strategy, or any meta-commentary sections — output only the completed Markdown report.
 8. If unsure about something, omit it.
+9. Names and owners: use only names that appear in the transcript, spelled as written. The person who commits to do something is the owner, not the person who asks for it. If no one clearly took the task, write "Not stated" as the owner.
+10. Never invent numbers, dates, due dates, company or product names. Do not expand acronyms unless the transcript does. If a due date was not said, write "Not stated".
+11. For the transcript reference, quote a few words and copy the [MM:SS] marker from that transcript line. Never make up a timestamp.
+12. Action Items are only things someone explicitly agreed to do. Key Decisions are only things the group agreed on, not ideas, hopes or one person's opinion.
 
 **SECTION-SPECIFIC INSTRUCTIONS:**
 {section_instructions}
