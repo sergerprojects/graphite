@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.24
+- A meeting keeps its calendar title (or the name you typed). Before, finishing the summary replaced it with an AI-written title, so the sidebar and the Home list disagreed. Only meetings still called "Meeting 17_11_26_..." are named by the summary now.
+
 ## 0.9.23
 - The live transcript keeps following the meeting. It used to stop scrolling when an update made the page taller than 100 px at once (a long line, several lines together, or text growing in place), so you had to scroll down by hand. It now follows whenever you haven't scrolled up yourself.
 

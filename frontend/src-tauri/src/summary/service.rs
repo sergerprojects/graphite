@@ -34,6 +34,17 @@ static CANCELLATION_REGISTRY: LazyLock<Arc<Mutex<HashMap<String, RegisteredCance
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// Strips the first `#` heading line; returns "" if no `#` is found.
+/// "Meeting 17_11_26_12_01_05": the name Graphite gives a recording that has no calendar event.
+fn is_placeholder_title(title: &str) -> bool {
+    let t = title.trim();
+    if t.is_empty() {
+        return true;
+    }
+    t.strip_prefix("Meeting ")
+        .map(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit() || c == '_'))
+        .unwrap_or(false)
+}
+
 fn strip_leading_title(markdown: &str) -> String {
     if let Some(hash_pos) = markdown.find('#') {
         let body_start = markdown[hash_pos..]
@@ -614,9 +625,15 @@ impl SummaryService {
                 .await
                 {
                     Ok(true) => {
-                        if let Some(name) =
-                            extract_meeting_name_from_markdown(&generated.final_markdown)
-                                .filter(|name| !name.is_empty())
+                        // Only name a meeting that still has Graphite's placeholder name. A title
+                        // that came from the calendar, or that you typed, is never replaced.
+                        let still_placeholder = match MeetingsRepository::get_meeting(&pool, &meeting_id).await {
+                            Ok(Some(m)) => is_placeholder_title(&m.title),
+                            _ => false,
+                        };
+                        if let Some(name) = extract_meeting_name_from_markdown(&generated.final_markdown)
+                            .filter(|name| !name.is_empty())
+                            .filter(|_| still_placeholder)
                         {
                             if let Err(error) =
                                 MeetingsRepository::update_meeting_name(&pool, &meeting_id, &name)
@@ -715,6 +732,15 @@ mod tests {
         assert!(SummaryService::cancel_summary(&meeting_id, second_started_at));
         assert!(second.is_cancelled());
         SummaryService::cleanup_cancellation_token(&meeting_id, second_started_at);
+    }
+
+    #[test]
+    fn only_the_placeholder_name_is_replaced() {
+        assert!(is_placeholder_title("Meeting 17_11_26_12_01_05"));
+        assert!(is_placeholder_title("  "));
+        assert!(!is_placeholder_title("Two Guys Talking"));
+        assert!(!is_placeholder_title("Meeting with Pratik"));
+        assert!(!is_placeholder_title("Brooks / Chris 1:1"));
     }
 
     #[test]
