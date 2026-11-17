@@ -84,6 +84,23 @@ fn all_classes(n: &Node, out: &mut HashSet<String>) {
     }
 }
 
+/// How much of `region` is covered by people's video tiles (0.0 to 1.0). A real presentation
+/// is a picture or document with, at most, a small strip of tiles beside it; when tiles fill
+/// the region it is just the call itself ("Presentation" is still in Meet's tree, but nobody
+/// is showing anything), and a snapshot would only be faces.
+pub fn tile_coverage(region: [f64; 4], tiles: &[Tile]) -> f64 {
+    let area = region[2] * region[3];
+    if area <= 0.0 {
+        return 0.0;
+    }
+    let overlap = |t: &[f64; 4]| {
+        let w = (region[0] + region[2]).min(t[0] + t[2]) - region[0].max(t[0]);
+        let h = (region[1] + region[3]).min(t[1] + t[3]) - region[1].max(t[1]);
+        if w > 0.0 && h > 0.0 { w * h } else { 0.0 }
+    };
+    (tiles.iter().map(|t| overlap(&t.rect)).sum::<f64>() / area).min(1.0)
+}
+
 /// The shared content's area: the stage minus the strip of people's tiles beside or
 /// under it (their moving video would otherwise end up in every picture).
 pub fn without_tile_strip(stage: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
@@ -309,6 +326,24 @@ pub fn teams_speaking(window: &Node) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    fn tile_at(rect: [f64; 4]) -> Tile {
+        Tile { name: "x".into(), classes: HashSet::new(), area: rect[2] * rect[3], rect }
+    }
+
+    #[test]
+    fn two_faces_filling_the_stage_are_not_a_presentation() {
+        let stage = [100.0, 100.0, 700.0, 560.0];
+        let tiles = [tile_at([110.0, 100.0, 680.0, 270.0]), tile_at([110.0, 380.0, 680.0, 270.0])];
+        assert!(tile_coverage(stage, &tiles) > 0.9);
+    }
+
+    #[test]
+    fn a_small_strip_of_tiles_beside_a_share_is_fine() {
+        let stage = [0.0, 0.0, 1200.0, 700.0];
+        let tiles = [tile_at([1020.0, 20.0, 160.0, 100.0]), tile_at([1020.0, 130.0, 160.0, 100.0])];
+        assert!(tile_coverage(stage, &tiles) < 0.1);
+    }
+
     use super::*;
 
     fn n(role: &str, value: &str, frame: Option<[f64; 4]>, classes: &[&str], kids: Vec<Node>) -> Node {

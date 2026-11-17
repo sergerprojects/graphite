@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.26
+- Snapshots are only taken of things that are presented. When Meet still had its presentation area open after a share ended, the pictures were just the people's faces; now a picture that is mostly video tiles is skipped.
+- Delete snapshots from the strip: hover a picture and click the bin, or use Delete all (asks first).
+
 ## 0.9.25
 - New summary model: Qwen 3.5 9B (Best Quality). In a blind test on three real meetings it made fewer mistakes and covered more than the 4B, at about 1.5x the time (about a minute for a 30-minute meeting). It is a 5.4 GB download and suits Macs with 16 GB or more. Pick it in Settings; the 4B stays the default.
 - Summaries are stricter about who owns an action item: only names that appear in the transcript, "Not stated" when no owner or due date was given, no invented numbers, company names or timestamps, and ideas are no longer written up as decisions.

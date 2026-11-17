@@ -143,6 +143,12 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
             region[3] = (top - 2.0 - region[1]).max(0.0);
         }
     }
+    // Meet keeps its "Presentation" area in the page after a share ends, and then the stage
+    // is just the people. A presentation is content, not faces: skip it.
+    if active::tile_coverage(region, &tiles) >= 0.5 {
+        keeper.reset_picture();
+        return Ok(false);
+    }
     let (px, py, pw, ph) = stage_in_pixels(wf, region, pic.w, pic.h);
     let page_pic = pic.crop(px, py, pw, ph);
     let from_page = page_pic.as_ref().and_then(|p| {
