@@ -80,3 +80,6 @@ frontend/src-tauri/binaries/
 # Optional local brand fonts (licensed; never committed)
 frontend/public/fonts/brand/
 dist/
+
+# Per-machine Claude Code settings (never commit)
+.claude/settings.local.json
