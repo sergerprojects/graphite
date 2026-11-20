@@ -5,44 +5,62 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Graphite: private meeting notes</title>
 <meta name="description" content="Graphite listens to your calls, writes the transcript on your computer while you write notes, and drafts a summary when the meeting ends. No bot in the call, no audio kept.">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="theme-color" content="#f7f6f1">
 <style>
+  /* Palette comes from the app icon: cream paper, slate ink, a burgundy ferrule and a pink eraser. */
   :root {
-    --bg: #f7f6f1; --card: #ffffff; --ink: #1c1c1a; --muted: #5f5e58; --line: #e4e2d9;
-    --accent: #2f3a45; --accent-ink: #ffffff; --code: #1c1f22; --code-ink: #e8e6df;
+    --bg: #f7f6f1; --card: #ffffff; --ink: #232a35; --muted: #5d6068; --line: #e6e1d3;
+    --slate: #3b4252; --burgundy: #86133a; --pink: #d97b93; --wood: #e9d8b8;
+    --accent: #232a35; --accent-ink: #f7f6f1; --code: #232a35; --code-ink: #f1ece0;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161715; --card: #1f201d; --ink: #f1efe8; --muted: #a7a59b; --line: #34352f;
-            --accent: #e8e6df; --accent-ink: #161715; --code: #0e0f0d; --code-ink: #e8e6df; color-scheme: dark; }
+    :root { --bg: #171b22; --card: #1f242d; --ink: #f1ece0; --muted: #a9acb4; --line: #333a46;
+            --slate: #c9ccd4; --burgundy: #e48fa6; --pink: #d97b93; --wood: #e9d8b8;
+            --accent: #f1ece0; --accent-ink: #171b22; --code: #0f1217; --code-ink: #f1ece0; color-scheme: dark; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
-         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
-  main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
-  h1 { font-size: clamp(34px, 6vw, 52px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -0.02em; }
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 24px 72px; }
+  .brand { display: flex; align-items: center; gap: 20px; margin: 0 0 22px; }
+  .brand img { width: 88px; height: 88px; border-radius: 20px; flex: none; box-shadow: 0 6px 18px rgba(35,42,53,.18); }
+  h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; margin: 0; letter-spacing: -0.025em; font-weight: 700; }
+  .ink { display: block; width: min(220px, 60%); height: 14px; margin-top: 8px; color: var(--burgundy); }
   .lead { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 0 36px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
-  .card.you { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  .card.you { border-color: var(--burgundy); box-shadow: 0 0 0 1px var(--burgundy); }
   .card h2 { font-size: 20px; margin: 0 0 4px; }
   .card .sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
   .cmd { display: flex; gap: 8px; align-items: stretch; margin: 0 0 12px; }
-  .cmd code { flex: 1; min-width: 0; background: var(--code); color: var(--code-ink); border-radius: 8px;
+  .cmd code { flex: 1; min-width: 0; background: var(--code); color: var(--code-ink); border-radius: 10px;
               padding: 10px 12px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-              overflow-x: auto; white-space: nowrap; }
-  button { font: inherit; font-size: 14px; border: 0; border-radius: 8px; padding: 0 14px; cursor: pointer;
+              white-space: normal; overflow-wrap: anywhere; }
+  button { font: inherit; font-size: 14px; font-weight: 600; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer;
            background: var(--accent); color: var(--accent-ink); }
-  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  a { color: inherit; }
+  button:hover { background: var(--burgundy); color: #fff; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--burgundy); outline-offset: 2px; }
+  a { color: inherit; text-decoration-color: var(--pink); text-underline-offset: 3px; }
+  a:hover { color: var(--burgundy); }
   .small { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
-  h3 { font-size: 15px; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); margin: 44px 0 12px; }
+  h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--burgundy); margin: 44px 0 12px; }
   ul { padding-left: 20px; margin: 0; } li { margin: 0 0 8px; }
+  li::marker { color: var(--pink); }
   footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  @media (max-width: 480px) { .brand img { width: 64px; height: 64px; border-radius: 15px; } }
 </style>
 </head>
 <body>
 <main>
-  <h1>Graphite</h1>
+  <div class="brand">
+    <img src="graphite-icon.png" alt="Graphite app icon: a pencil drawing a squiggle" width="88" height="88">
+    <div>
+      <h1>Graphite</h1>
+      <svg class="ink" viewBox="0 0 220 14" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9c8 7 14 5 19-2s10-6 15 1 11 6 17-1 11-6 16 1 11 6 17-1 11-6 16 1 11 6 17-1 11-6 16 1 11 5 14 0"/></svg>
+    </div>
+  </div>
   <p class="lead">Meeting notes that stay on your computer. Graphite listens to your calls, writes the transcript while you write notes, and drafts a summary when the meeting ends. No bot in the call, and no audio is kept.</p>
 
   <div class="cards">
@@ -73,7 +91,7 @@
   <h3>Or let your AI agent set it up</h3>
   <p class="small" style="margin-top:0">Paste this into Claude Code or another coding agent. It checks your computer, asks before installing, and walks you through the calendar and the first test.</p>
   <div class="cmd">
-    <code id="agent-prompt" style="white-space:normal">Set up Graphite on this computer. Read https://raw.githubusercontent.com/sergerprojects/graphite/main/docs/AGENT-SETUP.md and follow it. Ask me before you install anything.</code>
+    <code id="agent-prompt">Set up Graphite on this computer. Read https://raw.githubusercontent.com/sergerprojects/graphite/main/docs/AGENT-SETUP.md and follow it. Ask me before you install anything.</code>
     <button type="button" data-copy="agent-prompt">Copy</button>
   </div>
   <p class="small">The agent does the install and checks. You do the clicks that need you: allowing the microphone, signing in, and pasting your calendar link yourself, so the agent never sees it. <a href="https://github.com/sergerprojects/graphite/blob/main/docs/AGENT-SETUP.md">Read the instructions it follows</a>.</p>
