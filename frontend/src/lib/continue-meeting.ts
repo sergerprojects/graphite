@@ -9,6 +9,18 @@ export function rememberContinue(meetingId: string) {
   sessionStorage.setItem(KEY, JSON.stringify({ id: meetingId, at: Date.now() }));
 }
 
+/** The meeting the recording in progress will be added to, without consuming the memory. */
+export function peekContinue(): string | null {
+  try {
+    const raw = sessionStorage.getItem(KEY);
+    if (!raw) return null;
+    const { id, at } = JSON.parse(raw) as { id: string; at: number };
+    return id && Date.now() - at <= MAX_AGE_MS ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Transcribe again and add the new transcript to this meeting when it stops. */
 export function continueMeeting(meetingId: string, title: string, pathname: string | null, goHome: () => void) {
   rememberContinue(meetingId);

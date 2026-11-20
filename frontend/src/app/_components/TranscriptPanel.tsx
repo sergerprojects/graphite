@@ -8,6 +8,8 @@ import { ChevronUp, Copy, GlobeIcon, Minus } from 'lucide-react';
 import { MeetingHeader } from '@/components/Live/MeetingHeader';
 import { CaptureNotice } from '@/components/Live/CaptureNotice';
 import { getLiveRoster } from '@/lib/capture';
+import { peekContinue } from '@/lib/continue-meeting';
+import type { Transcript } from '@/types';
 import { LiveChat } from '@/components/Live/LiveChat';
 import { ImageStrip } from '@/components/Images/ImageStrip';
 import { NotesBox } from '@/components/Live/NotesBox';
@@ -186,18 +188,45 @@ export function TranscriptPanel({
   );
   const showLiveView = isRecording || notes.trim().length > 0;
 
-  // Convert transcripts to segments for virtualized view
-  const segments = useMemo(() =>
-    transcripts.map(t => ({
-      id: t.id,
-      timestamp: t.audio_start_time ?? 0,
-      endTime: t.audio_end_time,
+  // "Continue recording": show the earlier part of the call above the new lines, so the whole
+  // call reads as one. Display only: the earlier lines already belong to the meeting.
+  const [earlier, setEarlier] = useState<Transcript[]>([]);
+  useEffect(() => {
+    if (!isRecording) {
+      setEarlier([]);
+      return;
+    }
+    const id = peekContinue();
+    if (!id) return;
+    let alive = true;
+    (async () => {
+      try {
+        const first = await invoke<{ total_count: number }>('api_get_meeting_transcripts', { meetingId: id, limit: 1, offset: 0 });
+        const all = await invoke<{ transcripts: Transcript[] }>('api_get_meeting_transcripts', { meetingId: id, limit: Math.max(first.total_count, 1), offset: 0 });
+        if (alive) setEarlier([...all.transcripts].sort((a, b) => (a.audio_start_time ?? 0) - (b.audio_start_time ?? 0)));
+      } catch (e) {
+        console.warn('Could not load the earlier part of the call:', e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isRecording]);
+
+  // Convert transcripts to segments for virtualized view. New lines are shifted to follow the
+  // earlier part, the same way they are when the two recordings are joined.
+  const segments = useMemo(() => {
+    const shift = earlier.length ? Math.max(0, ...earlier.map(t => t.audio_end_time ?? t.audio_start_time ?? 0)) + 1 : 0;
+    const toSegment = (t: Transcript, prefix: string, by: number) => ({
+      id: `${prefix}${t.id}`,
+      timestamp: (t.audio_start_time ?? 0) + by,
+      endTime: t.audio_end_time === undefined ? undefined : t.audio_end_time + by,
       text: t.text,
       confidence: t.confidence,
       speaker: otherName && t.speaker === 'Others' ? otherName : (t.speaker && speakerNames[t.speaker]) || t.speaker,
-    })),
-    [transcripts, otherName, speakerNames]
-  );
+    });
+    return [...earlier.map(t => toSegment(t, 'earlier-', 0)), ...transcripts.map(t => toSegment(t, '', shift))];
+  }, [earlier, transcripts, otherName, speakerNames]);
 
   return (
     <div ref={transcriptContainerRef} className={`w-full border-r border-gray-200 flex flex-col overflow-y-auto ${showLiveView ? 'bg-[#f7f6f1]' : 'bg-white'}`}>

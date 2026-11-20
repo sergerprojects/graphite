@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.30
+- Continue recording shows the whole call: the earlier part of the transcript stays above, and the new lines follow on from where it stopped (times carry on from the end of the first part), so the live transcript reads as one call.
+
 ## 0.9.29
 - A call that ends now ends the meeting, whoever started the recording. Before, only recordings Graphite started itself from a calendar event stopped when the call ended; an ad-hoc call you chose to record (a Slack huddle, a Zoom you started by hand) ran until 10 minutes of silence. Now when the app that had your microphone lets go of it and 45 seconds pass with nobody talking, Graphite stops and saves. A meeting in a room (no call app) is never stopped this way, and the 10-minute silence stop still applies.
 
