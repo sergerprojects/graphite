@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.31
+- Continue recording no longer flashes the Home screen. Clicking it from a meeting shows a quiet "Starting…" page for the second it takes, then the live note.
+
 ## 0.9.30
 - Continue recording shows the whole call: the earlier part of the transcript stays above, and the new lines follow on from where it stopped (times carry on from the end of the first part), so the live transcript reads as one call.
 

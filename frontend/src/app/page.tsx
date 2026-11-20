@@ -204,6 +204,21 @@ export default function Home() {
     transcripts.length === 0;
   // Recording, but you went Home: show Home; the chip at the top brings you back.
   const showHomeWhileRecording = recordingState.isRecording && !liveFocused;
+  // "Continue recording" (or any start from another page) lands here a moment before the
+  // recording is up. Show a quiet "Starting" instead of flashing Home.
+  const [startingFromElsewhere, setStartingFromElsewhere] = useState(
+    () => typeof window !== 'undefined' && sessionStorage.getItem('autoStartRecording') === 'true'
+  );
+  useEffect(() => {
+    if (!startingFromElsewhere) return;
+    if (recordingState.isRecording) {
+      setStartingFromElsewhere(false);
+      return;
+    }
+    const giveUp = setTimeout(() => setStartingFromElsewhere(false), 10_000); // a failed start must not hide Home
+    return () => clearTimeout(giveUp);
+  }, [startingFromElsewhere, recordingState.isRecording]);
+  const showStarting = startingFromElsewhere && !recordingState.isRecording;
 
   const controlsEl = (
     <div className="flex items-center">
@@ -244,7 +259,9 @@ export default function Home() {
         onLoadPreview={loadMeetingTranscripts}
       />
       <div className="flex flex-1 overflow-hidden">
-        {showHome || showHomeWhileRecording ? (
+        {showStarting ? (
+          <div className="flex-1 flex items-center justify-center bg-[#f7f6f1] text-sm text-gray-500">Starting…</div>
+        ) : showHome || showHomeWhileRecording ? (
           <HomeView />
         ) : (
           <TranscriptPanel
