@@ -33,7 +33,9 @@ pub struct Tile {
 
 fn rect_ok(f: &[f64; 4]) -> bool {
     let (w, h) = (f[2], f[3]);
-    w >= 150.0 && h >= 100.0 && (1.0..=2.4).contains(&(w / h))
+    // Small on purpose: with a dozen people, Meet's side strip is two columns of tiles about
+    // 110 x 70 points each, and tiles that were not recognised ended up in the snapshots.
+    w >= 70.0 && h >= 45.0 && (1.0..=2.4).contains(&(w / h))
 }
 
 /// Two boxes that are the same place on screen (a few points of slack).
@@ -129,6 +131,51 @@ pub fn without_tile_strip(stage: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
         out[3] = (y - 2.0 - stage[1]).max(0.0);
     } else if let Some(x) = lined_up(in_right.iter().map(|t| t.rect[0]).collect(), 2) {
         out[2] = (x - 2.0 - stage[0]).max(0.0);
+    }
+    out
+}
+
+/// How much of `tile` lies inside `region`, as a share of the tile (0 to 1).
+fn share_of_tile_inside(region: &[f64; 4], tile: &[f64; 4]) -> f64 {
+    let w = (region[0] + region[2]).min(tile[0] + tile[2]) - region[0].max(tile[0]);
+    let h = (region[1] + region[3]).min(tile[1] + tile[3]) - region[1].max(tile[1]);
+    if w <= 0.0 || h <= 0.0 {
+        return 0.0;
+    }
+    (w * h / (tile[2] * tile[3]).max(1.0)).min(1.0)
+}
+
+/// The biggest rectangle inside `region` that no participant tile sticks into. Works for any
+/// strip shape (one column, two columns, a row, an L): while a tile still overlaps the region,
+/// cut the region on whichever side of that tile keeps the most area. A tile that is only
+/// grazed (a few points of slack in the reported positions) is left alone. Gives back the
+/// original region when cutting would throw most of it away: then the tiles were misread.
+pub fn without_tiles(region: [f64; 4], tiles: &[Tile]) -> [f64; 4] {
+    const GRAZE: f64 = 0.12;
+    let mut out = region;
+    for _ in 0..24 {
+        let worst = tiles
+            .iter()
+            .map(|t| (share_of_tile_inside(&out, &t.rect), t))
+            .filter(|(share, _)| *share > GRAZE)
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((_, t)) = worst else { break };
+        let (r, x1, y1) = (t.rect, out[0] + out[2], out[1] + out[3]);
+        let (tx1, ty1) = (r[0] + r[2], r[1] + r[3]);
+        let candidates = [
+            [out[0], out[1], (r[0] - 2.0 - out[0]).max(0.0), out[3]],
+            [tx1 + 2.0, out[1], (x1 - tx1 - 2.0).max(0.0), out[3]],
+            [out[0], out[1], out[2], (r[1] - 2.0 - out[1]).max(0.0)],
+            [out[0], ty1 + 2.0, out[2], (y1 - ty1 - 2.0).max(0.0)],
+        ];
+        let best = candidates.iter().copied().max_by(|a, b| (a[2] * a[3]).total_cmp(&(b[2] * b[3]))).unwrap_or(out);
+        if best[2] * best[3] <= 0.0 {
+            break;
+        }
+        out = best;
+    }
+    if out[2] * out[3] < 0.35 * region[2] * region[3] {
+        return region;
     }
     out
 }
@@ -326,6 +373,45 @@ pub fn teams_speaking(window: &Node) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn small_tile(x: f64, y: f64) -> Tile {
+        Tile { name: "Alex Morgan".into(), classes: HashSet::new(), area: 110.0 * 75.0, rect: [x, y, 110.0, 75.0] }
+    }
+
+    #[test]
+    fn a_two_column_strip_of_small_tiles_is_cut_off() {
+        let stage = [0.0, 0.0, 1500.0, 800.0];
+        let tiles: Vec<Tile> = (0..5)
+            .flat_map(|i| [small_tile(1270.0, 10.0 + 78.0 * i as f64), small_tile(1385.0, 10.0 + 78.0 * i as f64)])
+            .collect();
+        let region = without_tiles(stage, &tiles);
+        assert!(region[0] + region[2] <= 1270.0 && region[2] > 1200.0, "{region:?}");
+        assert_eq!((region[1], region[3]), (0.0, 800.0));
+    }
+
+    #[test]
+    fn tiles_under_the_share_and_a_grazing_tile_are_handled() {
+        let stage = [0.0, 0.0, 1000.0, 800.0];
+        let row: Vec<Tile> = (0..4).map(|i| small_tile(20.0 + 120.0 * i as f64, 700.0)).collect();
+        let r = without_tiles(stage, &row);
+        assert!(r[1] + r[3] <= 700.0 && r[3] > 650.0, "{r:?}");
+        assert_eq!(without_tiles(stage, &[small_tile(998.0, 100.0)]), stage);
+        assert_eq!(without_tiles(stage, &[]), stage);
+    }
+
+    #[test]
+    fn tiles_that_would_swallow_the_stage_are_ignored_as_misread() {
+        let stage = [0.0, 0.0, 400.0, 300.0];
+        let huge = Tile { name: "Alex Morgan".into(), classes: HashSet::new(), area: 1.0, rect: [20.0, 20.0, 360.0, 260.0] };
+        assert_eq!(without_tiles(stage, &[huge]), stage);
+    }
+
+    #[test]
+    fn small_tiles_count_as_tiles() {
+        assert!(rect_ok(&[0.0, 0.0, 110.0, 75.0]));
+        assert!(!rect_ok(&[0.0, 0.0, 40.0, 30.0]));
+    }
     fn tile_at(rect: [f64; 4]) -> Tile {
         Tile { name: "x".into(), classes: HashSet::new(), area: rect[2] * rect[3], rect }
     }

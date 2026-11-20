@@ -32,6 +32,24 @@ impl Frame {
         Frame::new(cw, ch, out)
     }
 
+    /// Nearest-neighbour copy at most `max_w` wide (for small diagnostic pictures).
+    pub fn scaled_to_width(&self, max_w: usize) -> Frame {
+        if self.w <= max_w || max_w == 0 {
+            return self.clone();
+        }
+        let (nw, nh) = (max_w, (self.h * max_w / self.w).max(1));
+        let mut out = Vec::with_capacity(nw * nh * 4);
+        for y in 0..nh {
+            let sy = y * self.h / nh;
+            for x in 0..nw {
+                let sx = x * self.w / nw;
+                let i = (sy * self.w + sx) * 4;
+                out.extend_from_slice(&self.bgra[i..i + 4]);
+            }
+        }
+        Frame { w: nw, h: nh, bgra: out }
+    }
+
     fn luma(&self, x: usize, y: usize) -> f32 {
         let i = (y * self.w + x) * 4;
         0.114 * self.bgra[i] as f32 + 0.587 * self.bgra[i + 1] as f32 + 0.299 * self.bgra[i + 2] as f32

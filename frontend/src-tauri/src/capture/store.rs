@@ -60,6 +60,29 @@ pub fn save(
     Ok(name)
 }
 
+/// Keep the numbers and a small picture of how a snapshot was cut, so a bad one can be
+/// diagnosed from what really happened. Hidden folder, newest 10 only.
+pub fn save_diag(meeting_folder: &Path, stem: &str, json: &[u8], small_png: &[u8]) {
+    let dir = screens_dir(meeting_folder).join(".diag");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let _ = write_atomic(&dir.join(format!("{stem}.json")), json);
+    let _ = write_atomic(&dir.join(format!("{stem}.png")), small_png);
+    let mut stems: Vec<String> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_string_lossy().strip_suffix(".json").map(String::from))
+        .collect();
+    stems.sort();
+    while stems.len() > 10 {
+        let old = stems.remove(0);
+        let _ = std::fs::remove_file(dir.join(format!("{old}.json")));
+        let _ = std::fs::remove_file(dir.join(format!("{old}.png")));
+    }
+}
+
 /// Number of snapshots already saved for this meeting.
 pub fn count(meeting_folder: &Path) -> usize {
     read_index(&screens_dir(meeting_folder)).len()

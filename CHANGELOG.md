@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.34
+- Snapshots no longer include the people's strip. In a big call Meet shows two columns of small tiles beside the shared screen; they were too small to be recognised, so they ended up in the picture. Small tiles are recognised now, and any tile that still reaches into the shared area is cut out whatever shape the strip is. If tiles still overlap what would be saved, the picture is skipped instead of saved.
+- Snapshots stop cutting into dark slides: the picture is trimmed by pixels only to fine-tune the reported area, never by more than a sixth, so a dark-blue slide keeps its bottom. The call-controls bar is only cut off when it is a thin bar.
+- Each snapshot now keeps a small hidden record of how it was cut (screens/.diag, newest 10), so a bad one can be explained from what really happened.
+
 ## 0.9.33
 - A small brand kit (docs/BRAND.md) and a quieter look to match: warm paper background, ink text, one burgundy accent for focus and hover, hairline borders, and a serif for titles and note headings so it reads like a notebook. The blue and purple accents and gradients are gone. Selected text gets a soft pink highlighter. The download page follows the same kit.
 

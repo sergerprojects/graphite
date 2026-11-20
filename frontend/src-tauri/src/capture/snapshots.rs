@@ -137,9 +137,14 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
     // the shared content: cut it off before looking for the content.
     let tiles = meet::meet_page(win).map(active::meet_tiles).unwrap_or_default();
     let mut region = active::without_tile_strip(share.stage, &tiles);
+    // Then whatever tiles still reach into it, whatever shape the strip is (two columns of small
+    // tiles in a big call, a row, an L).
+    region = active::without_tiles(region, &tiles);
     // The call-controls bar (and the reaction tray over it) floats over the bottom of the stage.
+    // It is a thin bar: a "bar" that would take more than a sixth of the stage is something else.
     if let Some(top) = meet::controls_top(win) {
-        if top > region[1] + region[3] * 0.5 && top < region[1] + region[3] {
+        let cut = region[1] + region[3] - top;
+        if top > region[1] + region[3] * 0.5 && cut > 0.0 && cut <= region[3] * 0.17 {
             region[3] = (top - 2.0 - region[1]).max(0.0);
         }
     }
@@ -149,11 +154,20 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
         keeper.reset_picture();
         return Ok(false);
     }
+    // People's faces still inside what we are about to keep: not sure what this is, so keep nothing.
+    if active::tile_coverage(region, &tiles) >= 0.2 {
+        super::trace::note("snapshots", "people's tiles overlap the shared area; skipped this picture");
+        return Ok(true);
+    }
     let (px, py, pw, ph) = stage_in_pixels(wf, region, pic.w, pic.h);
     let page_pic = pic.crop(px, py, pw, ph);
     let from_page = page_pic.as_ref().and_then(|p| {
-        let (x, y, w, h) = p.dense_bounds(40.0, 0.4)?;
-        let block = p.crop(x, y, w, h)?;
+        // Pixel bounds only fine-tune the reported area (a few points of slack). A dark slide
+        // reads as "empty" to them, so a big cut is ignored rather than trusted.
+        let block = match p.dense_bounds(40.0, 0.4) {
+            Some((x, y, w, h)) if w * 100 >= p.w * 85 && h * 100 >= p.h * 85 => p.crop(x, y, w, h)?,
+            _ => p.clone(),
+        };
         // Whatever the layout, tiles beside or under the share are separated from it by black
         // gutters: keep the big piece.
         let (bx, by, bw, bh) = block.main_block();
@@ -175,6 +189,15 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
         let png = shared.to_png()?;
         let text = ocr_bytes(dir, &png);
         let name = store::save(dir, &png, text.as_deref(), t, (shared.w, shared.h))?;
+        // How this picture was cut, kept small and hidden, so a bad one can be explained.
+        let diag = serde_json::json!({
+            "window": wf, "stage": share.stage, "page": share.page, "region": region, "controls_top": meet::controls_top(win),
+            "tiles": tiles.iter().map(|t| serde_json::json!({"name": t.name, "rect": t.rect})).collect::<Vec<_>>(),
+            "picture_px": [pic.w, pic.h], "kept_px": [shared.w, shared.h], "presenter": share.presenter,
+        });
+        if let (Ok(j), Ok(p)) = (serde_json::to_vec_pretty(&diag), pic.scaled_to_width(1100).to_png()) {
+            store::save_diag(dir, name.trim_end_matches(".png"), &j, &p);
+        }
         super::trace::note("snapshots", &format!("saved {name}"));
         log::info!("snapshots: saved {name} ({} shared by {})", if share.own { "own screen" } else { "screen" }, share.presenter);
         let _ = app.emit("snapshot-added", name);
