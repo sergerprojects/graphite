@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.33
+- A small brand kit (docs/BRAND.md) and a quieter look to match: warm paper background, ink text, one burgundy accent for focus and hover, hairline borders, and a serif for titles and note headings so it reads like a notebook. The blue and purple accents and gradients are gone. Selected text gets a soft pink highlighter. The download page follows the same kit.
+
 ## 0.9.32
 - Graphite updates itself. It checks for a new version when it opens and every few hours, downloads it quietly and installs it (never while a meeting is recording), then offers Restart now; otherwise the new version starts the next time you open it. Updates are signed, so only builds from this project are accepted. Settings, General, Health and updates has an Update and restart button. This version must be installed once the usual way; from here on it updates itself.
 - A landing page (docs/index.html) with copy-and-paste install lines for Mac and Windows.

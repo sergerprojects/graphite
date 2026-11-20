@@ -1,6 +1,6 @@
 {
     "name": "graphite",
-    "version": "0.9.32",
+    "version": "0.9.33",
     "private": true,
     "main": "electron/main.js",
     "scripts": {

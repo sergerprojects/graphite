@@ -101,7 +101,7 @@ export function SummaryGeneratorButtonGroup({
         <Button
           variant="outline"
           size="sm"
-          className="bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 border-blue-200 px-3 gap-2"
+          className="px-3 gap-2"
           onClick={() => {
             Analytics.trackButtonClick('generate_summary', 'meeting_details');
             void onGenerateSummary(customPrompt);
