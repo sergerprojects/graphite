@@ -18,9 +18,18 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # The runner's CMake is updated now and then. A cached llama.cpp build configured by an
+      # older CMake fails with "include could not find requested file", so the cache is keyed
+      # to the CMake version.
+      - name: Note the CMake version
+        id: cmake
+        shell: bash
+        run: echo "ver=$(cmake --version | head -n1 | tr -c '0-9.\n' '-')" >> "$GITHUB_OUTPUT"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
+          key: cmake-${{ steps.cmake.outputs.ver }}
 
       - uses: pnpm/action-setup@v4
         with:
