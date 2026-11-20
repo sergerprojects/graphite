@@ -11,7 +11,7 @@ security find-identity -p codesigning | grep -q "Graphite Local" && export APPLE
 # Updates are signed so installed copies can verify them. The key lives outside the repo.
 KEY="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/.graphite/updater.key}"
 [ -f "$KEY" ] || { echo "BUILD FAILED: updater signing key not found at $KEY"; exit 1; }
-export TAURI_SIGNING_PRIVATE_KEY_PATH="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+export TAURI_SIGNING_PRIVATE_KEY="$(cat "$KEY")" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
 
 (cd llama-helper && cargo build --release --features metal)
 cp target/release/llama-helper frontend/src-tauri/binaries/llama-helper-aarch64-apple-darwin
