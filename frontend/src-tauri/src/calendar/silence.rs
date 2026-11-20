@@ -24,6 +24,11 @@ pub fn note_speech() {
     LAST_SPEECH_MS.store(Utc::now().timestamp_millis(), Ordering::Relaxed);
 }
 
+/// Seconds since the last transcript line (or since the recording began).
+pub fn silent_secs() -> i64 {
+    (Utc::now().timestamp_millis() - LAST_SPEECH_MS.load(Ordering::Relaxed)) / 1000
+}
+
 /// Pure decision, unit tested.
 pub fn should_stop(recording: bool, paused: bool, silent_secs: i64, limit_minutes: i64) -> bool {
     recording && !paused && limit_minutes > 0 && silent_secs >= limit_minutes * 60

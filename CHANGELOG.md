@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.29
+- A call that ends now ends the meeting, whoever started the recording. Before, only recordings Graphite started itself from a calendar event stopped when the call ended; an ad-hoc call you chose to record (a Slack huddle, a Zoom you started by hand) ran until 10 minutes of silence. Now when the app that had your microphone lets go of it and 45 seconds pass with nobody talking, Graphite stops and saves. A meeting in a room (no call app) is never stopped this way, and the 10-minute silence stop still applies.
+
 ## 0.9.28
 - Fix a word everywhere: click "Fix a word", type the wrong and right spelling (Jetmine → Jumpmind) and it is changed in this meeting's transcript, notes and title in one go. It can remember the right spelling for next time.
 - My words: a saved list of names and terms. Every new summary and every "Update from my edits" spells them the way you do.

@@ -207,6 +207,17 @@ where
     format!("Call {}", now.format("%H:%M"))
 }
 
+/// How long it must also have been quiet (no transcript line) before a released mic ends the meeting.
+const CALL_OVER_QUIET_SECS: i64 = 45;
+
+/// The app that was using the mic (Slack huddle, Zoom, Teams, a phone app...) let go of it and
+/// it has been quiet since: the call is over, whoever started the recording. Needs the call to
+/// have been seen during this recording, so a meeting in a room (no call app) is never stopped
+/// by this.
+pub fn should_stop_after_call(recording: bool, paused: bool, call_seen: bool, call_still_joined: bool, silent_secs: i64) -> bool {
+    recording && !paused && call_seen && !call_still_joined && silent_secs >= CALL_OVER_QUIET_SECS
+}
+
 impl AutoRecorder {
     pub fn is_auto_session(&self) -> bool {
         self.session.is_some()
@@ -305,6 +316,8 @@ pub fn start(app: AppHandle<Wry>) {
         let mut debounce = MicDebounce::default();
         let mut recorder = AutoRecorder::default();
         let mut joined_told: HashSet<String> = HashSet::new();
+        // A call app was holding the mic at some point during this recording.
+        let mut call_seen = false;
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => break,
@@ -324,6 +337,12 @@ pub fn start(app: AppHandle<Wry>) {
                 log::info!("Calendar: mic {:?}", t);
             }
 
+            if !is_recording {
+                call_seen = false;
+            } else if debounce.is_joined() {
+                call_seen = true;
+            }
+
             let events = STATE.upcoming.read().await.clone();
             let excluded = STATE.excluded.lock().await.clone();
 
@@ -339,7 +358,7 @@ pub fn start(app: AppHandle<Wry>) {
                 }
             }
 
-            let actions = recorder.tick(&TickInput {
+            let mut actions = recorder.tick(&TickInput {
                 now,
                 mode: current_mode(),
                 joined: debounce.is_joined(),
@@ -349,6 +368,16 @@ pub fn start(app: AppHandle<Wry>) {
                 events: &events,
                 excluded: &excluded,
             });
+            // Any recording, however it started (a huddle you chose to record, a Zoom you started
+            // by hand): once the call app lets go of the mic and it has gone quiet, the call is over.
+            if actions.is_empty() {
+                let paused = crate::audio::recording_commands::is_recording_paused().await;
+                if should_stop_after_call(is_recording, paused, call_seen, debounce.is_joined(), super::silence::silent_secs()) {
+                    log::info!("Calendar: the call app released the mic and it is quiet, ending the meeting");
+                    call_seen = false;
+                    actions.push(Action::AutoStop { title: "this call (it ended)".to_string() });
+                }
+            }
             for action in actions {
                 perform(&app, action).await;
             }
@@ -394,6 +423,17 @@ async fn perform(app: &AppHandle<Wry>, action: Action) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_released_mic_and_quiet_end_any_recording_that_saw_a_call() {
+        // The huddle ended: mic released (no longer "joined"), 45 s of quiet.
+        assert!(should_stop_after_call(true, false, true, false, 45));
+        assert!(!should_stop_after_call(true, false, true, false, 44), "someone was just talking");
+        assert!(!should_stop_after_call(true, false, true, true, 600), "the call app still has the mic");
+        assert!(!should_stop_after_call(true, false, false, false, 600), "a meeting in a room: no call was ever seen");
+        assert!(!should_stop_after_call(true, true, true, false, 600), "paused");
+        assert!(!should_stop_after_call(false, false, true, false, 600), "not recording");
+    }
 
     fn at(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
