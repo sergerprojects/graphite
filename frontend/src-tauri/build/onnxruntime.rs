@@ -11,9 +11,11 @@ use std::{
 use std::os::windows::fs::MetadataExt;
 
 const WINDOWS_X64_TARGET: &str = "x86_64-pc-windows-msvc";
-const ARCHIVE_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-win-x64-1.22.0.zip";
-const ARCHIVE_SHA256: &str = "174c616efc0271194488642a72f1a514e01487da4dfe84c49296d66e40ebe0da";
-const ARCHIVE_SIZE: u64 = 72_368_545;
+// microsoft/onnxruntime disappeared from GitHub on 2026-11-17, taking its release downloads with it.
+// The same 1.22.0 Windows build is published on PyPI as a wheel (a zip); PyPI lists this digest.
+const ARCHIVE_URL: &str = "https://files.pythonhosted.org/packages/89/a5/1c6c10322201566015183b52ef011dfa932f5dd1b278de8d75c3b948411d/onnxruntime-1.22.0-cp311-cp311-win_amd64.whl";
+const ARCHIVE_SHA256: &str = "03d3ef7fb11adf154149d6e767e21057e0e577b947dd3f66190b212528e1db31";
+const ARCHIVE_SIZE: u64 = 12_691_517;
 
 struct Artifact {
     archive_path: &'static str,
@@ -24,19 +26,19 @@ struct Artifact {
 
 const ARTIFACTS: [Artifact; 3] = [
     Artifact {
-        archive_path: "onnxruntime-win-x64-1.22.0/lib/onnxruntime.dll",
+        archive_path: "onnxruntime/capi/onnxruntime.dll",
         output_name: "onnxruntime.dll",
-        size: 12_418_080,
-        sha256: "579b636403983254346a5c1d80bd28f1519cd1e284cd204f8d4ff41f8d711559",
+        size: 14_855_216,
+        sha256: "20e5f96903515680d100e4a4a1857392264bc265a749f0734f0770906567b359",
     },
     Artifact {
-        archive_path: "onnxruntime-win-x64-1.22.0/lib/onnxruntime_providers_shared.dll",
+        archive_path: "onnxruntime/capi/onnxruntime_providers_shared.dll",
         output_name: "onnxruntime_providers_shared.dll",
-        size: 22_064,
-        sha256: "ba00ea1ef846c9b909c7854bc56c51051a20f9773b3e1153dda118d4b85d0b93",
+        size: 22_088,
+        sha256: "f6223a3c9d3e39bb37fefb8dc69bc0b524deae4f45bb3e734c747d9ace6ea02d",
     },
     Artifact {
-        archive_path: "onnxruntime-win-x64-1.22.0/LICENSE",
+        archive_path: "onnxruntime/LICENSE",
         output_name: "onnxruntime-LICENSE.txt",
         size: 1_094,
         sha256: "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674",
