@@ -5,11 +5,16 @@ $ErrorActionPreference = 'Stop'
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'Graphite needs 64-bit Windows 10 or 11.' }
 
-$url = 'https://github.com/sergerprojects/graphite/releases/download/windows-beta/Graphite-windows-x64-setup.exe'
+$url = 'https://github.com/sergerprojects/graphite/releases/latest/download/Graphite-windows-x64-setup.exe'
 $file = Join-Path $env:TEMP 'Graphite-windows-x64-setup.exe'
 
 Write-Host 'Downloading Graphite...'
-Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+try {
+  Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+} catch {
+  # The newest release has no Windows build yet: use the newest build of main.
+  Invoke-WebRequest -Uri 'https://github.com/sergerprojects/graphite/releases/download/windows-beta/Graphite-windows-x64-setup.exe' -OutFile $file -UseBasicParsing
+}
 Unblock-File $file
 
 Write-Host 'Installing...'
