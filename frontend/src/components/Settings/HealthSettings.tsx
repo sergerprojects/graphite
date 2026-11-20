@@ -17,6 +17,9 @@ import {
   setRememberVoices,
   voiceModelsStatus,
 } from '@/lib/beta';
+import { findUpdate, installUpdate, restartGraphite } from '@/lib/updater';
+import { useRecordingState } from '@/contexts/RecordingStateContext';
+import type { Update } from '@tauri-apps/plugin-updater';
 
 const row = 'flex items-center justify-between gap-4 rounded-lg border p-4';
 
@@ -36,6 +39,9 @@ export function HealthSettings() {
   const [updateMsg, setUpdateMsg] = useState('');
   const [checking, setChecking] = useState(false);
   const [remember, setRemember] = useState<boolean | null>(null);
+  const { isRecording } = useRecordingState();
+  const [signed, setSigned] = useState<Update | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   const refresh = useCallback(() => {
     claudeCodeStatus().then(s => setClaude(s.installed)).catch(() => setClaude(null));
@@ -50,12 +56,27 @@ export function HealthSettings() {
     try {
       const u = await checkForUpdate();
       setUpdate(u);
+      setSigned(await findUpdate().catch(() => null));
       setUpdateMsg(u.newer ? `Version ${u.latest} is available.` : `You have the latest version (${u.current}).`);
     } catch (e) {
       setUpdate(null);
       setUpdateMsg(String(e));
     } finally {
       setChecking(false);
+    }
+  };
+
+  const updateNow = async () => {
+    if (!signed) return;
+    setUpdating(true);
+    try {
+      await installUpdate(signed);
+      toast.success(`Graphite ${signed.version} is installed. Restarting…`);
+      await restartGraphite();
+    } catch (e) {
+      toast.error(`Could not update: ${String(e)}`, { duration: 12000 });
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -81,14 +102,19 @@ export function HealthSettings() {
         <div className="flex-1">
           <div className="font-medium">Updates</div>
           <div className="text-sm text-gray-600">
-            {updateMsg || 'Graphite does not update itself. Check here, then run the line below in Terminal.'}
+            {updateMsg || 'Graphite checks for updates by itself and installs them between meetings. You can check now.'}
           </div>
-          {update?.newer && (
+          {update?.newer && !signed && (
             <pre className="mt-2 overflow-x-auto rounded bg-gray-100 p-2 text-xs">{update.command}</pre>
           )}
         </div>
         <div className="flex shrink-0 gap-2">
-          {update?.newer && (
+          {signed && (
+            <Button size="sm" onClick={updateNow} disabled={updating || isRecording} title={isRecording ? 'Finish the meeting first' : undefined}>
+              {updating ? 'Updating…' : 'Update and restart'}
+            </Button>
+          )}
+          {update?.newer && !signed && (
             <>
               <Button size="sm" onClick={() => copy(update.command, 'Copied. Paste it in Terminal.')}>Copy command</Button>
               {update.url && <Button size="sm" variant="outline" onClick={() => openExternal(update.url)}>What&apos;s new</Button>}

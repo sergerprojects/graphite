@@ -62,6 +62,10 @@ jobs:
       - name: Build the installer
         working-directory: frontend
         shell: bash
+        env:
+          # Signs the update package so installed copies accept it. Empty until the secret is set.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         # The installer is finished before Tauri asks for an updater signing key we don't have;
         # the next step fails the run if no installer was produced.
         run: pnpm run tauri:build -- --bundles nsis || echo "(updater key error at the end is expected)"
@@ -74,6 +78,7 @@ jobs:
           f=$(ls target/release/bundle/nsis/*-setup.exe | head -n1)
           [ -f "$f" ] || { echo "BUILD FAILED: no installer produced"; exit 1; }
           cp "$f" dist/Graphite-windows-x64-setup.exe
+          [ -f "$f.sig" ] && cp "$f.sig" dist/Graphite-windows-x64-setup.exe.sig || echo "(no update signature: the signing secret is not set)"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -87,4 +92,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload windows-beta dist/Graphite-windows-x64-setup.exe --clobber
+        run: |
+          gh release upload windows-beta dist/Graphite-windows-x64-setup.exe --clobber
+          [ -f dist/Graphite-windows-x64-setup.exe.sig ] && gh release upload windows-beta dist/Graphite-windows-x64-setup.exe.sig --clobber || true
+
+      # Windows copies update from latest.json (written with each Mac release). Point its Windows
+      # entry at the installer just uploaded, so a Windows build that finishes after the release
+      # still reaches people.
+      - name: Refresh the Windows entry in latest.json
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f dist/Graphite-windows-x64-setup.exe.sig ] || { echo "no signature, nothing to refresh"; exit 0; }
+          gh release download --pattern latest.json --dir dist/feed --clobber || { echo "no latest.json on the latest release yet"; exit 0; }
+          jq --arg sig "$(cat dist/Graphite-windows-x64-setup.exe.sig)" \
+             --arg url "https://github.com/${{ github.repository }}/releases/download/windows-beta/Graphite-windows-x64-setup.exe" \
+             '.platforms["windows-x86_64"] = {signature: $sig, url: $url}' dist/feed/latest.json > dist/feed/latest.new.json
+          tag=$(gh release view --json tagName -q .tagName)
+          cp dist/feed/latest.new.json dist/feed/latest.json
+          gh release upload "$tag" dist/feed/latest.json --clobber

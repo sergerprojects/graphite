@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphite: private meeting notes</title>
+<meta name="description" content="Graphite listens to your calls, writes the transcript on your computer while you write notes, and drafts a summary when the meeting ends. No bot in the call, no audio kept.">
+<style>
+  :root {
+    --bg: #f7f6f1; --card: #ffffff; --ink: #1c1c1a; --muted: #5f5e58; --line: #e4e2d9;
+    --accent: #2f3a45; --accent-ink: #ffffff; --code: #1c1f22; --code-ink: #e8e6df;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161715; --card: #1f201d; --ink: #f1efe8; --muted: #a7a59b; --line: #34352f;
+            --accent: #e8e6df; --accent-ink: #161715; --code: #0e0f0d; --code-ink: #e8e6df; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
+  h1 { font-size: clamp(34px, 6vw, 52px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -0.02em; }
+  .lead { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 0 36px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .card.you { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card h2 { font-size: 20px; margin: 0 0 4px; }
+  .card .sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+  .cmd { display: flex; gap: 8px; align-items: stretch; margin: 0 0 12px; }
+  .cmd code { flex: 1; min-width: 0; background: var(--code); color: var(--code-ink); border-radius: 8px;
+              padding: 10px 12px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+              overflow-x: auto; white-space: nowrap; }
+  button { font: inherit; font-size: 14px; border: 0; border-radius: 8px; padding: 0 14px; cursor: pointer;
+           background: var(--accent); color: var(--accent-ink); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: inherit; }
+  .small { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+  h3 { font-size: 15px; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); margin: 44px 0 12px; }
+  ul { padding-left: 20px; margin: 0; } li { margin: 0 0 8px; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Graphite</h1>
+  <p class="lead">Meeting notes that stay on your computer. Graphite listens to your calls, writes the transcript while you write notes, and drafts a summary when the meeting ends. No bot in the call, and no audio is kept.</p>
+
+  <div class="cards">
+    <section class="card" id="mac">
+      <h2>Mac</h2>
+      <p class="sub">Apple Silicon (M1 or newer), macOS 14.4 or newer. Open Terminal and paste:</p>
+      <div class="cmd">
+        <code id="mac-cmd">curl -fsSL https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.sh | bash</code>
+        <button type="button" data-copy="mac-cmd">Copy</button>
+      </div>
+      <p class="small">Installs the newest version and opens it. Later versions update themselves between meetings.</p>
+    </section>
+
+    <section class="card" id="windows">
+      <h2>Windows <span class="sub" style="font-size:14px">(preview)</span></h2>
+      <p class="sub">Windows 10 or 11, 64-bit. Open PowerShell and paste:</p>
+      <div class="cmd">
+        <code id="win-cmd">irm https://raw.githubusercontent.com/sergerprojects/graphite/main/scripts/install-release.ps1 | iex</code>
+        <button type="button" data-copy="win-cmd">Copy</button>
+      </div>
+      <p class="small">Windows may warn that the installer is unsigned: choose More info, then Run anyway. Speaker names from the call app and screen snapshots are Mac-only for now.</p>
+    </section>
+  </div>
+
+  <p class="small" style="margin-top:18px">Prefer to download it yourself?
+    <a href="https://github.com/sergerprojects/graphite/releases/latest">All releases and release notes</a>.</p>
+
+  <h3>What it does</h3>
+  <ul>
+    <li><strong>Works with any call app.</strong> Google Meet, Zoom, Teams, Slack huddles: it hears your microphone and the call audio.</li>
+    <li><strong>Transcribed on your computer.</strong> Speech recognition runs locally; transcripts and notes never leave it.</li>
+    <li><strong>Real names, not "Speaker 1".</strong> Reads who the call app shows as speaking, and tells voices apart when it can't (names from the call app are Mac-only).</li>
+    <li><strong>Notes you actually write.</strong> Markdown as you type, folders, search, and a chat with the meeting while it runs.</li>
+    <li><strong>Summary when it ends,</strong> written through your own Claude Code sign-in, or fully on-device with a local model. Fix a misspelled name once and it is fixed everywhere; one click to undo.</li>
+    <li><strong>Stops when the call does.</strong> It ends the meeting when you leave, and shares to Slack as a draft when you ask.</li>
+  </ul>
+
+  <h3>Before you use it</h3>
+  <ul>
+    <li><strong>Consent:</strong> transcribing people can need their consent. Tell the people on your calls.</li>
+    <li><strong>Privacy:</strong> there is no analytics or telemetry. Summaries and Chat send the transcript text to Claude through your own Claude Code sign-in unless you choose a local model.</li>
+    <li><strong>Not signed by Apple or Microsoft:</strong> the install lines above avoid the warnings. Check with your security team before wide use.</li>
+  </ul>
+
+  <footer>
+    <a href="https://github.com/sergerprojects/graphite/blob/main/docs/BETA.md">Setup guide</a> ·
+    <a href="https://github.com/sergerprojects/graphite/issues/new">Report a problem</a> ·
+    Built on <a href="https://github.com/Zackriya-Solutions/meeting-minutes">Meetily</a> by Zackriya Solutions (MIT).
+  </footer>
+</main>
+<script>
+  // Highlight the card for this computer.
+  var ua = navigator.userAgent || '';
+  var mine = /Windows/i.test(ua) ? 'windows' : (/Macintosh|Mac OS X/i.test(ua) ? 'mac' : null);
+  if (mine) {
+    var el = document.getElementById(mine);
+    el.classList.add('you');
+    el.parentNode.insertBefore(el, el.parentNode.firstChild);
+  }
+  document.querySelectorAll('button[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = document.getElementById(b.getAttribute('data-copy')).textContent;
+      function done() { var t = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = t; }, 1600); }
+      if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done, done); } else { done(); }
+    });
+  });
+</script>
+</body>
+</html>

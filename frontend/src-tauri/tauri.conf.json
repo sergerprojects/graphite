@@ -2,7 +2,7 @@
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "Graphite",
     "mainBinaryName": "graphite",
-    "version": "0.9.31",
+    "version": "0.9.32",
     "identifier": "com.graphite.ai",
     "build": {
         "frontendDist": "../out",
@@ -103,6 +103,7 @@
         "resources": [
             "templates/*.json"
         ],
+        "createUpdaterArtifacts": true,
         "externalBin": [
             "binaries/llama-helper",
             "binaries/ffmpeg"
@@ -119,9 +120,9 @@
     },
     "plugins": {
         "updater": {
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDQTYzMUQ3ODc5N0M4MkEKUldRcXlKZUgxekdtN09DRkVWSHNpZlJseEVOUmpNd1dDSTNaLzZ3MXJGTnY3WW1pdnlOYjBpbkIK",
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEyRTdCRUNBNTI2NzYwRTQKUldUa1lHZFN5cjdub2dUbzJGZEpjSEpBbko5RUFuenlXeW5qSE10RXNlUExBb3dPK0k1K0VqUy8K",
             "endpoints": [
-                "https://github.com/Zackriya-Solutions/meeting-minutes/releases/latest/download/latest.json"
+                "https://github.com/sergerprojects/graphite/releases/latest/download/latest.json"
             ]
         }
     }

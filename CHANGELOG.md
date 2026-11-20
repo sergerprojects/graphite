@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.32
+- Graphite updates itself. It checks for a new version when it opens and every few hours, downloads it quietly and installs it (never while a meeting is recording), then offers Restart now; otherwise the new version starts the next time you open it. Updates are signed, so only builds from this project are accepted. Settings, General, Health and updates has an Update and restart button. This version must be installed once the usual way; from here on it updates itself.
+- A landing page (docs/index.html) with copy-and-paste install lines for Mac and Windows.
+
 ## 0.9.31
 - Continue recording no longer flashes the Home screen. Clicking it from a meeting shows a quiet "Starting…" page for the second it takes, then the live note.
 
