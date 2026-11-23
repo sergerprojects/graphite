@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.39
+- **Update and restart is in the menu bar.** When a newer Graphite is found, the menu shows "Update and restart (version)". One click installs it if it isn't already and restarts. During a recording the item is greyed out ("ready, after your meeting"), so a meeting is never interrupted.
+
 ## 0.9.38
 - Connecting the calendar checks itself. Settings, Calendar now has one button, **Connect my calendar**. It looks at Claude Code, says plainly what is missing (not installed, no Google Calendar connector, connector not signed in, signed in with an API key) with the exact steps, and only switches over once a real read of your calendar has worked. The iCal link moved under "Other way". "Copy these steps for my AI assistant" copies the steps as text.
 - A connector Graphite has never heard of now works: it finds any calendar `list_events` or `get_events` tool in Claude Code and remembers the one that worked.

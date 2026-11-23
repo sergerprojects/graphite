@@ -18,6 +18,7 @@ const answers: Record<string, unknown> = {
   calendar_upcoming: events,
   calendar_diagnose: { ok: true, state: 'ready', message: 'Your Claude Code can read your Google Calendar.', steps: [], tool: 'mcp__google-calendar__list_events', server: 'google-calendar', events: null, api_key_source: null },
   calendar_connect: { ok: true, state: 'ready', message: 'Connected. Graphite read your calendar (3 meetings in the next two days).', steps: [], tool: 'mcp__google-calendar__list_events', server: 'google-calendar', events: 3, api_key_source: null },
+  set_update_ready: null,
   calendar_status: { enabled: true, reason: null, source: 'claude' },
   calendar_get_record_mode: 'prompt',
   api_get_onboarding_status: { completed: true, current_step: 3 },

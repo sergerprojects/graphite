@@ -21,6 +21,26 @@ pub(crate) enum CalendarMenuEntry {
     Note(String),
 }
 
+/// Version of a newer Graphite that is found (and usually already installed) and waits for a restart.
+/// Set by the page's update check; shown in the menu as "Update and restart".
+static UPDATE_READY: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+/// The page tells the menu about a newer version (Some) or that there is none (None).
+#[tauri::command]
+pub fn set_update_ready<R: Runtime>(app: AppHandle<R>, version: Option<String>) {
+    if let Ok(mut v) = UPDATE_READY.lock() {
+        *v = version.filter(|s| !s.is_empty());
+    }
+    update_tray_menu(&app);
+}
+
+fn update_and_restart_handler<R: Runtime>(app: &AppHandle<R>) {
+    focus_main_window(app);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.eval("window.dispatchEvent(new CustomEvent('update-and-restart-from-tray'))");
+    }
+}
+
 /// Calendar section last computed by the poller (rendered by build_menu).
 static CALENDAR_ENTRIES: Lazy<Mutex<Vec<CalendarMenuEntry>>> =
     Lazy::new(|| Mutex::new(vec![CalendarMenuEntry::Note("Calendar not connected".to_string())]));
@@ -71,6 +91,7 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, item_id: &str) {
             }
         }
         "check_updates" => check_updates_handler(app),
+        "update_and_restart" => update_and_restart_handler(app),
         "quit" => app.exit(0),
         _ => {}
     }
@@ -563,6 +584,17 @@ fn build_menu<R: Runtime>(
                 );
             }
         }
+    }
+
+    // A newer Graphite is waiting: one click installs it (if not already) and restarts. Never during a recording.
+    let update = UPDATE_READY.lock().ok().and_then(|v| v.clone());
+    if let Some(version) = update {
+        builder = builder.item(&PredefinedMenuItem::separator(app)?);
+        builder = if matches!(state, RecordingState::Stopped) {
+            builder.item(&MenuItemBuilder::with_id("update_and_restart", format!("↻ Update and restart ({version})")).build(app)?)
+        } else {
+            builder.item(&MenuItemBuilder::new(format!("↻ Update {version} ready (after your meeting)")).enabled(false).build(app)?)
+        };
     }
 
     builder

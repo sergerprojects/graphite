@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
+import type { Update } from '@tauri-apps/plugin-updater';
 import { checkForUpdate } from '@/lib/beta';
 import { findUpdate, installUpdate, restartGraphite } from '@/lib/updater';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
@@ -20,6 +22,7 @@ export function UpdateNotice() {
   const recording = useRef(isRecording);
   recording.current = isRecording;
   const installed = useRef<string | null>(null);
+  const found = useRef<Update | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -48,6 +51,9 @@ export function UpdateNotice() {
           next = RETRY_WHILE_RECORDING; // never swap the app under a live meeting
         } else {
           const update = await findUpdate();
+          found.current = update;
+          // The tray menu offers "Update and restart" as soon as a newer build exists.
+          invoke('set_update_ready', { version: update?.version ?? null }).catch(() => {});
           if (update && installed.current !== update.version) {
             await installUpdate(update);
             installed.current = update.version;
@@ -68,10 +74,36 @@ export function UpdateNotice() {
       if (alive) timer = setTimeout(tick, next);
     };
 
+    // Menu bar: Update and restart. Installs first if the quiet install has not happened yet.
+    const fromTray = async () => {
+      if (recording.current) {
+        toast('Finish the recording first', { description: 'Graphite restarts to update once the meeting is saved.' });
+        return;
+      }
+      try {
+        const update = found.current ?? (await findUpdate());
+        if (!update) {
+          toast.success('Graphite is up to date');
+          invoke('set_update_ready', { version: null }).catch(() => {});
+          return;
+        }
+        if (installed.current !== update.version) {
+          toast(`Updating to ${update.version}…`);
+          await installUpdate(update);
+          installed.current = update.version;
+        }
+        await restartGraphite();
+      } catch (e) {
+        toast.error('Could not update', { description: String(e) });
+      }
+    };
+    window.addEventListener('update-and-restart-from-tray', fromTray);
+
     timer = setTimeout(tick, 8000);
     return () => {
       alive = false;
       clearTimeout(timer);
+      window.removeEventListener('update-and-restart-from-tray', fromTray);
     };
   }, []);
   return null;
