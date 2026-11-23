@@ -28,6 +28,7 @@ pub fn start(app: AppHandle<Wry>) {
     tauri::async_runtime::spawn(async move {
         // No early return when nothing is configured: the user can paste an
         // iCal link later and the loop picks the new source up.
+        super::claude_cal::set_preferred(super::load_claude_tool(&app));
         init_client(load_ical_url(&app), super::load_prefers_claude(&app)).await;
         load_cache().await;
         let cancel = CANCEL.clone();

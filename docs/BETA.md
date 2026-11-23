@@ -12,8 +12,9 @@ curl -fsSL https://raw.githubusercontent.com/sergerprojects/graphite/main/script
 Follow the three setup screens. Then open **Settings, General** and check **Health and updates**: Claude Code should say Ready (summaries and Chat need it), and you can install the voice models there.
 
 ## Before your first real meeting
+- Install [Claude Code](https://claude.com/claude-code) and sign in. Summaries, Chat and the calendar all use it; the Claude desktop or web app is not enough (Mac and Windows).
 - Tell the people on the call you are taking notes. Transcribing people can need their consent where you are.
-- Connect your calendar in **Settings, Calendar** to get meeting titles and the pop-up.
+- Connect your calendar in **Settings, Calendar** to get meeting titles and the pop-up. Easiest: run `/mcp` in Claude Code, authorize the Google Calendar connector, then press **Connect my calendar**; it checks everything and says what is missing. You don't need an iCal link, which some Google Workspace admins turn off. An AI assistant can do the setup: see [AGENT-SETUP.md](AGENT-SETUP.md).
 
 ## What I would like you to try
 1. A normal Google Meet: does the meeting stop on its own within about 10 seconds of you hitting Leave?

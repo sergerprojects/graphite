@@ -58,7 +58,7 @@ impl ClaudeCalendar {
 /// The Google Calendar tools a Claude Code setup may have, in the order we try them.
 /// People install Google through different connectors, so the tool's name (and answer) differs.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Kind {
+pub(crate) enum Kind {
     /// `list_events`: answers with Google Calendar v3 JSON.
     Json,
     /// `get_events` of the Google Workspace connector: answers with a formatted text list.
@@ -72,6 +72,47 @@ const CANDIDATES: &[(&str, Kind)] = &[
     ("mcp__plugin_google-workspace_vmcp-google-workspace__get_events", Kind::Text),
 ];
 
+/// Which kind of answer a calendar tool gives, judged by its name. Any `list_events` is Google Calendar
+/// v3 JSON; any `get_events` is the Workspace connector's text list.
+pub(crate) fn kind_for(tool: &str) -> Option<Kind> {
+    if !tool.starts_with("mcp__") {
+        return None;
+    }
+    if let Some(k) = CANDIDATES.iter().find(|(t, _)| *t == tool).map(|(_, k)| *k) {
+        return Some(k);
+    }
+    if tool.ends_with("__list_events") {
+        Some(Kind::Json)
+    } else if tool.ends_with("__get_events") {
+        Some(Kind::Text)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn is_known_tool(tool: &str) -> bool {
+    CANDIDATES.iter().any(|(t, _)| *t == tool)
+}
+
+/// The tool Graphite's setup check found and proved works (also saved in settings). Tried before the
+/// built-in list, so a connector with a name Graphite has never seen still works.
+static PREFERRED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub(crate) fn set_preferred(tool: Option<String>) {
+    if let Ok(mut g) = PREFERRED.lock() {
+        *g = tool;
+    }
+}
+
+pub(crate) fn preferred() -> Option<String> {
+    PREFERRED.lock().ok().and_then(|g| g.clone())
+}
+
+/// Read events once through one named tool: proof that the whole path works. Returns how many.
+pub(crate) async fn test_fetch(tool: &str, kind: Kind, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<usize> {
+    Ok(fetch_with(tool, kind, from, to).await?.len())
+}
+
 /// The tool that worked last time, tried first so a refresh is one call, not three.
 static LAST_GOOD: std::sync::Mutex<Option<usize>> = std::sync::Mutex::new(None);
 
@@ -81,6 +122,15 @@ fn is_missing_tool(err: &str) -> bool {
 }
 
 async fn fetch(from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<Value>> {
+    if let Some(tool) = preferred() {
+        if let Some(kind) = kind_for(&tool) {
+            match fetch_with(&tool, kind, from, to).await {
+                Ok(events) => return Ok(events),
+                Err(e) if is_missing_tool(&e.to_string()) => {} // fall through to the built-in list
+                Err(e) => return Err(e),
+            }
+        }
+    }
     let first = LAST_GOOD.lock().ok().and_then(|g| *g).unwrap_or(0).min(CANDIDATES.len() - 1);
     let order: Vec<usize> = std::iter::once(first).chain((0..CANDIDATES.len()).filter(|i| *i != first)).collect();
     let mut last_err: Option<anyhow::Error> = None;

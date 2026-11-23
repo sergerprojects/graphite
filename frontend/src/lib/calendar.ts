@@ -218,6 +218,41 @@ export async function setCalendarSource(source: 'claude' | 'google'): Promise<Ca
   return invoke<CalendarStatus>('calendar_set_source', { source });
 }
 
+/** What the calendar setup check found. `steps` is what to do, in order; empty when ready. */
+export interface CalendarCheck {
+  ok: boolean;
+  state: 'ready' | 'no_claude' | 'no_calendar_connector' | 'needs_auth' | 'claude_error' | 'fetch_failed';
+  message: string;
+  steps: string[];
+  tool: string | null;
+  server: string | null;
+  events: number | null;
+  api_key_source: string | null;
+}
+
+/** Look at Claude Code and say what is missing for the calendar. Changes nothing. */
+export async function diagnoseCalendar(): Promise<CalendarCheck> {
+  return invoke<CalendarCheck>('calendar_diagnose');
+}
+
+/** One-button setup: check, prove a real read works, then switch to it. Saves nothing unless it worked. */
+export async function connectCalendar(): Promise<CalendarCheck> {
+  return invoke<CalendarCheck>('calendar_connect');
+}
+
+/** The check as plain text a person can paste to an AI assistant to get unstuck. */
+export function checkAsText(c: CalendarCheck): string {
+  const steps = c.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
+  return [
+    `Graphite calendar setup: ${c.state}`,
+    c.message,
+    steps && `What to do:\n${steps}`,
+    'You can re-check any time by running: graphite --calendar-doctor (prints JSON, exit code 0 when ready).',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 /** "This is the meeting": attach the recording already in progress to this calendar event. */
 export async function attachRecordingToEvent(event: CalendarEvent): Promise<void> {
   await invoke('calendar_attach_to_running', { event });

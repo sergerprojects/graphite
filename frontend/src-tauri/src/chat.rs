@@ -5,7 +5,7 @@
 //! disabled, in a scratch directory, with a minimal environment.
 
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -299,21 +299,7 @@ pub async fn call_mcp_tools(
     let claude = find_claude().ok_or_else(|| {
         "Claude Code isn't installed on this computer. Install it from claude.com/claude-code, sign in once in Terminal, then try again.".to_string()
     })?;
-    let mut child = Command::new(&claude)
-        .args(["-p", "--model", "haiku", "--setting-sources", "user", "--allowedTools", &allowed, "--output-format", "stream-json", "--verbose", "--max-turns", "6"])
-        .env_clear()
-        .envs(crate::platform::base_env())
-        .env("USER", std::env::var("USER").unwrap_or_default())
-        .env("LOGNAME", std::env::var("LOGNAME").or_else(|_| std::env::var("USER")).unwrap_or_default())
-        .env("SHELL", if cfg!(windows) { "" } else { "/bin/zsh" })
-        .env("LANG", "en_US.UTF-8")
-        // Copying a tool call needs no thinking; skipping it saves several seconds a call.
-        .env("MAX_THINKING_TOKENS", "0")
-        .current_dir(std::env::temp_dir())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
+    let mut child = claude_command(&claude, &["-p", "--model", "haiku", "--setting-sources", "user", "--allowedTools", &allowed, "--output-format", "stream-json", "--verbose", "--max-turns", "6"])
         .spawn()
         .map_err(|e| format!("Could not start Claude Code: {}", e))?;
     if let Some(mut stdin) = child.stdin.take() {
@@ -368,6 +354,27 @@ pub async fn call_mcp_tools(
             }
         })
         .collect())
+}
+
+/// A headless Claude Code process: clean environment (so a stray API key can't switch off the person's
+/// own connectors), no thinking, run from a temp folder, stdout piped. Callers add nothing but the prompt.
+pub(crate) fn claude_command(claude: &Path, args: &[&str]) -> Command {
+    let mut c = Command::new(claude);
+    c.args(args)
+        .env_clear()
+        .envs(crate::platform::base_env())
+        .env("USER", std::env::var("USER").unwrap_or_default())
+        .env("LOGNAME", std::env::var("LOGNAME").or_else(|_| std::env::var("USER")).unwrap_or_default())
+        .env("SHELL", if cfg!(windows) { "" } else { "/bin/zsh" })
+        .env("LANG", "en_US.UTF-8")
+        // Copying a tool call needs no thinking; skipping it saves several seconds a call.
+        .env("MAX_THINKING_TOKENS", "0")
+        .current_dir(std::env::temp_dir())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    c
 }
 
 /// Open an https link in the default browser (meeting links, calendar event).

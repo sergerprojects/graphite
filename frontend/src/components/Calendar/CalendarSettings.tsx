@@ -18,6 +18,10 @@ import {
   CalendarEvent,
   CalendarRecordMode,
   CalendarStatus,
+  CalendarCheck,
+  checkAsText,
+  connectCalendar,
+  diagnoseCalendar,
   formatEventTime,
   getCalendarRecordMode,
   getCalendarStatus,
@@ -48,6 +52,8 @@ export function CalendarSettings({ section }: { section: 'login' | 'calendar' | 
   const [connecting, setConnecting] = useState(false);
   const [ignoredText, setIgnoredText] = useState('');
   const [sourceBusy, setSourceBusy] = useState(false);
+  const [check, setCheck] = useState<CalendarCheck | null>(null);
+  const [checking, setChecking] = useState(false);
   const [silenceMinutes, setSilenceMinutes] = useState('10');
 
   useEffect(() => {
@@ -86,6 +92,16 @@ export function CalendarSettings({ section }: { section: 'login' | 'calendar' | 
     };
   }, []);
 
+  // Not connected yet: look at Claude Code right away so the page already says what is missing.
+  useEffect(() => {
+    if (section !== 'calendar' || status === null || status.enabled || check) return;
+    let active = true;
+    diagnoseCalendar().then(c => active && setCheck(c)).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [section, status, check]);
+
   const refreshEvents = async () => {
     const [s, upcoming] = await Promise.all([getCalendarStatus(), getUpcomingCalendarEvents()]);
     setStatus(s);
@@ -103,6 +119,20 @@ export function CalendarSettings({ section }: { section: 'login' | 'calendar' | 
       toast.error('Could not switch', { description: String(error) });
     } finally {
       setSourceBusy(false);
+    }
+  };
+
+  const handleConnectClaude = async () => {
+    setChecking(true);
+    try {
+      const result = await connectCalendar();
+      setCheck(result);
+      if (result.ok) toast.success('Calendar connected');
+      await refreshEvents();
+    } catch (error) {
+      toast.error('Could not check the calendar', { description: String(error) });
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -209,53 +239,87 @@ export function CalendarSettings({ section }: { section: 'login' | 'calendar' | 
           {status === null
             ? 'Checking…'
             : status.enabled
-              ? `Connected via ${status.source === 'ical' ? 'private iCal link' : status.source === 'claude' ? 'your Claude Google connection' : 'Google sign-in (gcloud)'}${status.reason ? ` (last sync error: ${status.reason})` : ''}`
-              : `Not connected${status.reason ? ` — ${status.reason}` : ''}`}
+              ? `Connected via ${status.source === 'ical' ? 'private iCal link' : status.source === 'claude' ? 'your Claude Code Google connection' : 'Google sign-in (gcloud)'}${status.reason ? ` (last sync error: ${status.reason})` : ''}`
+              : `Not connected${status.reason && status.reason !== 'Calendar not initialized' ? ` — ${status.reason}` : ''}`}
         </div>
+
         {status?.source !== 'ical' && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
-            <div className="text-sm text-gray-700">
-              <div className="font-medium">
-                {status?.source === 'claude' ? 'Using your Claude Google connection' : 'Use your Claude Google connection'}
+          <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-gray-700">
+                <div className="font-medium">
+                  {status?.source === 'claude' ? 'Reading your calendar through Claude Code' : 'Connect my calendar'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  Needs Claude Code installed and signed in to your Google Calendar connector. Graphite checks it for you and tells you what is missing.
+                </div>
               </div>
-              <div className="text-xs text-gray-500">
-                Reads your calendar through the Google Calendar or Google Workspace connector already signed in to Claude. No Google Cloud project. Sign the connector in once (run /mcp in Claude Code). Refreshes about every 8 minutes.
-              </div>
+              <Button size="sm" onClick={handleConnectClaude} disabled={checking}>
+                {checking ? 'Checking… (up to 30 s)' : status?.source === 'claude' ? 'Check again' : 'Connect my calendar'}
+              </Button>
             </div>
-            {status?.source === 'claude' ? (
-              <Button size="sm" variant="outline" onClick={() => handleSource('google')} disabled={sourceBusy}>
-                Switch back
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => handleSource('claude')} disabled={sourceBusy}>
-                {sourceBusy ? 'Switching…' : 'Use it'}
-              </Button>
+
+            {check && (
+              <div className={`rounded-md border p-3 text-sm space-y-2 ${check.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                <div className="font-medium">{check.ok ? '✓ ' : ''}{check.message}</div>
+                {check.steps.length > 0 && (
+                  <ol className="list-decimal pl-5 space-y-1 text-xs">
+                    {check.steps.map((st, i) => (
+                      <li key={i}>{st}</li>
+                    ))}
+                  </ol>
+                )}
+                {!check.ok && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(checkAsText(check)).then(
+                        () => toast.success('Copied. Paste it to your AI assistant and it can finish the setup.'),
+                        () => toast.error('Could not copy'),
+                      );
+                    }}
+                  >
+                    Copy these steps for my AI assistant
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {status?.source === 'claude' && (
+              <button className="text-xs text-gray-500 underline" onClick={() => handleSource('google')} disabled={sourceBusy}>
+                Stop using Claude Code for the calendar
+              </button>
             )}
           </div>
         )}
+
         {status?.source === 'ical' ? (
           <Button variant="outline" size="sm" onClick={handleDisconnect}>
             Remove link
           </Button>
         ) : (
-          <div className="space-y-2">
-            <p className="text-xs text-gray-500">
-              In Google Calendar open Settings → your calendar → Integrate calendar and copy the{' '}
-              <b>Secret address in iCal format</b>. Treat it like a password: anyone with it can read your calendar. It is stored only on this Mac. New or moved meetings can take a few hours to appear.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
-                value={linkInput}
-                onChange={e => setLinkInput(e.target.value)}
-              />
-              <Button size="sm" onClick={handleConnect} disabled={connecting || !linkInput.trim()}>
-                {connecting ? 'Checking…' : 'Connect'}
-              </Button>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-xs text-gray-500">Other way: private iCal link (some companies turn this off)</summary>
+            <div className="space-y-2 pt-2">
+              <p className="text-xs text-gray-500">
+                In Google Calendar open Settings → your calendar → Integrate calendar and copy the{' '}
+                <b>Secret address in iCal format</b>. If that box is missing, your company has turned it off; use Connect my calendar above. Treat the link like a password: anyone with it can read your calendar. It is stored only on this computer. New or moved meetings can take a few hours to appear.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+                  value={linkInput}
+                  onChange={e => setLinkInput(e.target.value)}
+                />
+                <Button size="sm" onClick={handleConnect} disabled={connecting || !linkInput.trim()}>
+                  {connecting ? 'Checking…' : 'Connect'}
+                </Button>
+              </div>
             </div>
-          </div>
+          </details>
         )}
       </div>
 

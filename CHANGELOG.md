@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.38
+- Connecting the calendar checks itself. Settings, Calendar now has one button, **Connect my calendar**. It looks at Claude Code, says plainly what is missing (not installed, no Google Calendar connector, connector not signed in, signed in with an API key) with the exact steps, and only switches over once a real read of your calendar has worked. The iCal link moved under "Other way". "Copy these steps for my AI assistant" copies the steps as text.
+- A connector Graphite has never heard of now works: it finds any calendar `list_events` or `get_events` tool in Claude Code and remembers the one that worked.
+- For AI assistants: `graphite --calendar-doctor` prints the same check as JSON (exit code 0 when ready) and `--save` records the choice. See docs/AGENT-SETUP.md.
+
 ## 0.9.37
 - Snapshots of a shared screen are cut correctly and kept once. Graphite asked macOS for a window picture bigger than the window really was (common on a regular, non-Retina monitor); macOS pads that with black instead of enlarging it, so every position worked out from the picture was off by a sixth. The crop then flipped between two versions of the same slide (one with a row of faces) and both were saved. Pictures are now taken at the window's real size.
 - Each picture is kept once. A snapshot is no longer saved if it matches any earlier one in the meeting (not only the last), or if every word on it was already on one that was saved.

@@ -886,6 +886,8 @@ pub fn run() {
             calendar::calendar_status,
             calendar::calendar_set_ical_url,
             calendar::calendar_set_source,
+            calendar::calendar_diagnose,
+            calendar::calendar_connect,
             calendar::calendar_upcoming,
             calendar::calendar_agenda,
             calendar::calendar_week,

@@ -10,6 +10,7 @@
 
 pub mod autorecord;
 pub mod claude_cal;
+pub mod doctor;
 pub mod google;
 pub mod ical;
 pub mod mic_activity;
@@ -821,6 +822,50 @@ pub async fn calendar_set_source(app: tauri::AppHandle<tauri::Wry>, source: Stri
         }
     });
     Ok(STATE.status.read().await.clone())
+}
+
+const TOOL_KEY: &str = "calendar_claude_tool";
+
+/// The connector tool the setup check proved works, saved so it survives a restart.
+pub(crate) fn load_claude_tool<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<String> {
+    use tauri_plugin_store::StoreExt;
+    app.store(ical::STORE_FILE)
+        .ok()?
+        .get(TOOL_KEY)?
+        .as_str()
+        .map(String::from)
+        .filter(|t| !t.is_empty())
+}
+
+/// Look at Claude Code and say what, if anything, is missing for the calendar. Changes nothing.
+#[tauri::command]
+pub async fn calendar_diagnose() -> doctor::Check {
+    doctor::run_check(false).await
+}
+
+/// The one-button setup: check Claude Code, prove a real read works, then switch to it and save.
+/// Nothing is saved unless the read worked.
+#[tauri::command]
+pub async fn calendar_connect(app: tauri::AppHandle<tauri::Wry>) -> Result<doctor::Check, String> {
+    use tauri_plugin_store::StoreExt;
+    let check = doctor::run_check(true).await;
+    if !check.ok {
+        return Ok(check);
+    }
+    let store = app.store(ical::STORE_FILE).map_err(|e| format!("Failed to access store: {}", e))?;
+    store.set(SOURCE_KEY, serde_json::json!("claude"));
+    if let Some(t) = &check.tool {
+        store.set(TOOL_KEY, serde_json::json!(t));
+    }
+    store.save().map_err(|e| format!("Failed to save store: {}", e))?;
+    init_client(load_ical_url(&app), true).await;
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = refresh_window(&handle).await {
+            STATE.status.write().await.reason = Some(e.to_string());
+        }
+    });
+    Ok(check)
 }
 
 /// Saved iCal link from the app store, if any. Never logged.
