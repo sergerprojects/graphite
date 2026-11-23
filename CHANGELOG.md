@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.35
+- The calendar now works with the Google Workspace connector, not only the Google Calendar one. People who installed Google through DevBar's "google-workspace" plugin saw "Couldn't refresh your calendar ... No such tool available". Graphite now tries the Google Calendar connector, then the Google Workspace connector, then the Workspace plugin, remembers the one that works, and says clearly when none is signed in.
+
 ## 0.9.34
 - Snapshots no longer include the people's strip. In a big call Meet shows two columns of small tiles beside the shared screen; they were too small to be recognised, so they ended up in the picture. Small tiles are recognised now, and any tile that still reaches into the shared area is cut out whatever shape the strip is. If tiles still overlap what would be saved, the picture is skipped instead of saved.
 - Snapshots stop cutting into dark slides: the picture is trimmed by pixels only to fine-tune the reported area, never by more than a sixth, so a dark-blue slide keeps its bottom. The call-controls bar is only cut off when it is a thin bar.

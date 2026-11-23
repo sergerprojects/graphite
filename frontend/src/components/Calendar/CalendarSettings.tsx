@@ -219,7 +219,7 @@ export function CalendarSettings({ section }: { section: 'login' | 'calendar' | 
                 {status?.source === 'claude' ? 'Using your Claude Google connection' : 'Use your Claude Google connection'}
               </div>
               <div className="text-xs text-gray-500">
-                Reads your calendar through the Google Calendar connector already signed in to Claude. No Google Cloud project. Sign the connector in once (run /mcp in Claude Code). Refreshes about every 8 minutes.
+                Reads your calendar through the Google Calendar or Google Workspace connector already signed in to Claude. No Google Cloud project. Sign the connector in once (run /mcp in Claude Code). Refreshes about every 8 minutes.
               </div>
             </div>
             {status?.source === 'claude' ? (
