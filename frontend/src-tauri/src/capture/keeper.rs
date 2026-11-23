@@ -6,6 +6,13 @@
 
 use super::frame::hamming;
 
+fn words_of(text: &str) -> std::collections::HashSet<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.chars().count() >= 3)
+        .map(|w| w.to_lowercase())
+        .collect()
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct KeepRules {
     /// Hash distance at or below which two frames count as the same picture.
@@ -27,6 +34,11 @@ impl Default for KeepRules {
 pub struct Keeper {
     rules: KeepRules,
     last_kept: Option<u64>,
+    /// Every picture kept so far, so a slide that comes back (or a crop that flips between two
+    /// versions of the same slide) is not saved again.
+    seen: Vec<u64>,
+    /// The words on each kept picture.
+    texts: Vec<std::collections::HashSet<String>>,
     last_kept_at: f64,
     candidate: Option<(u64, f64)>,
     kept: usize,
@@ -57,12 +69,18 @@ impl Keeper {
                 return false;
             }
         }
+        // Seen before, earlier in this meeting: unique pictures only.
+        if self.seen.iter().any(|h| hamming(hash, *h) <= self.rules.same_within.min(3)) {
+            self.candidate = None;
+            return false;
+        }
         match self.candidate {
             Some((c, since)) if hamming(hash, c) <= self.rules.same_within => {
                 let settled = t - since >= self.rules.settle_secs;
                 let spaced = self.last_kept.is_none() || t - self.last_kept_at >= self.rules.min_gap_secs;
                 if settled && spaced {
                     self.last_kept = Some(hash);
+                    self.seen.push(hash);
                     self.last_kept_at = t;
                     self.candidate = None;
                     self.kept += 1;
@@ -76,6 +94,29 @@ impl Keeper {
                 false
             }
         }
+    }
+
+    /// True when everything readable on this picture was already on a picture kept earlier (the same
+    /// slide cut a little differently). Pictures with almost no text are never called repeats.
+    pub fn text_is_repeat(&self, text: &str) -> bool {
+        let words = words_of(text);
+        if words.len() < 8 {
+            return false;
+        }
+        self.texts.iter().any(|old| {
+            let fresh = words.iter().filter(|w| !old.contains(*w)).count();
+            fresh * 10 <= words.len()
+        })
+    }
+
+    /// Remember the words of a picture that was saved.
+    pub fn remember_text(&mut self, text: &str) {
+        self.texts.push(words_of(text));
+    }
+
+    /// The picture offered last was a repeat after all: it does not count as kept.
+    pub fn undo_keep(&mut self) {
+        self.kept = self.kept.saturating_sub(1);
     }
 
     /// Forget the previous picture (a new share started).
@@ -104,6 +145,30 @@ mod tests {
     }
 
     #[test]
+    fn a_slide_that_comes_back_is_not_kept_twice() {
+        let mut k = Keeper::new(KeepRules::default());
+        k.offer(A, 0.0);
+        assert!(k.offer(A, 1.5));
+        k.offer(B, 5.0);
+        assert!(k.offer(B, 6.5));
+        // back to the first slide, and it stays there
+        k.offer(A, 10.0);
+        assert!(!k.offer(A, 12.0), "already kept earlier");
+        assert_eq!(k.kept(), 2);
+    }
+
+    #[test]
+    fn the_same_words_cut_differently_are_a_repeat() {
+        let mut k = Keeper::new(KeepRules::default());
+        let slide = "Agentforce for Marketing Starter 60K org year Includes Unmetered Agentic Content Active Campaigns Planning Paths";
+        assert!(!k.text_is_repeat(slide));
+        k.remember_text(slide);
+        assert!(k.text_is_repeat("Agentforce for Marketing Starter 60K org year Includes Unmetered Agentic Content Active Campaigns"));
+        assert!(!k.text_is_repeat("Roadmap Expansion Adoption Scorecard Readiness Activation Discovery Prioritization Governance Charter"));
+        assert!(!k.text_is_repeat("too short"));
+    }
+
+    #[test]
     fn a_flicker_that_never_settles_is_skipped() {
         let mut k = Keeper::new(KeepRules::default());
         for (i, h) in [A, B, A, B, A, B].into_iter().enumerate() {
@@ -124,14 +189,14 @@ mod tests {
     }
 
     #[test]
-    fn returning_to_an_older_slide_counts_as_new() {
+    fn returning_to_an_older_slide_is_not_kept_again() {
         let mut k = Keeper::new(KeepRules::default());
         k.offer(A, 0.0);
         k.offer(A, 2.0);
         k.offer(B, 10.0);
         assert!(k.offer(B, 12.0));
         k.offer(A, 20.0);
-        assert!(k.offer(A, 22.0), "A again after B is a different moment");
+        assert!(!k.offer(A, 22.0), "unique pictures only: A was already kept");
     }
 
     #[test]
@@ -148,12 +213,14 @@ mod tests {
     }
 
     #[test]
-    fn reset_lets_the_same_picture_be_kept_again() {
+    fn reset_forgets_the_last_picture_but_not_what_was_kept() {
         let mut k = Keeper::new(KeepRules::default());
         k.offer(A, 0.0);
         assert!(k.offer(A, 2.0));
         k.reset_picture();
         k.offer(A, 100.0);
-        assert!(k.offer(A, 102.0));
+        assert!(!k.offer(A, 102.0), "a share that stops and starts again does not repeat a kept picture");
+        k.offer(B, 110.0);
+        assert!(k.offer(B, 112.0), "a new picture after the reset is kept");
     }
 }

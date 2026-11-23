@@ -188,6 +188,15 @@ async fn tick(app: &AppHandle<Wry>, dir: &Path, keeper: &mut Keeper) -> Result<b
     if keeper.offer(shared.ahash(), t) {
         let png = shared.to_png()?;
         let text = ocr_bytes(dir, &png);
+        // The same slide cut a little differently reads the same: keep one.
+        if let Some(t) = text.as_deref() {
+            if keeper.text_is_repeat(t) {
+                keeper.undo_keep();
+                super::trace::note("snapshots", "same words as a picture already kept; skipped");
+                return Ok(true);
+            }
+            keeper.remember_text(t);
+        }
         let name = store::save(dir, &png, text.as_deref(), t, (shared.w, shared.h))?;
         // How this picture was cut, kept small and hidden, so a bad one can be explained.
         let diag = serde_json::json!({

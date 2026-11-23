@@ -51,9 +51,20 @@ pub async fn capture_window(id: u32, width_px: usize, height_px: usize) -> Resul
         .ok_or_else(|| "window is gone".to_string())?
         .retained();
     let filter = sc::ContentFilter::with_desktop_independent_window(&window);
+    // The window's real pixel size: its size in points times the display's scale (1 on a plain
+    // monitor, 2 on a Retina one). Asking for more does not enlarge it, it pads the picture with
+    // black, and then every position worked out from the picture's size is off.
+    let (mut w, mut h) = (width_px, height_px);
+    let info = sc::ShareableContent::info_for_filter(&filter);
+    let (scale, rect) = (info.point_pixel_scale() as f64, info.content_rect());
+    if scale > 0.0 && rect.size.width > 0.0 && rect.size.height > 0.0 {
+        w = (rect.size.width * scale).round() as usize;
+        h = (rect.size.height * scale).round() as usize;
+    }
     let mut cfg = sc::StreamCfg::new();
-    cfg.set_width(width_px);
-    cfg.set_height(height_px);
+    cfg.set_width(w);
+    cfg.set_height(h);
+    cfg.set_scales_to_fit(true);
     cfg.set_pixel_format(cv::PixelFormat::_32_BGRA);
     cfg.set_shows_cursor(false);
     let buf = sc::ScreenshotManager::capture_sample_buf(&filter, &cfg).await.map_err(|e| format!("{e:?}"))?;
