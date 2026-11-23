@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.37
+- Snapshots of a shared screen are cut correctly and kept once. Graphite asked macOS for a window picture bigger than the window really was (common on a regular, non-Retina monitor); macOS pads that with black instead of enlarging it, so every position worked out from the picture was off by a sixth. The crop then flipped between two versions of the same slide (one with a row of faces) and both were saved. Pictures are now taken at the window's real size.
+- Each picture is kept once. A snapshot is no longer saved if it matches any earlier one in the meeting (not only the last), or if every word on it was already on one that was saved.
+
 ## 0.9.36
 - Ask a finished meeting questions. Under the transcript there is now an "Ask about this meeting…" box. It reads the whole saved transcript (with any speaker names and word fixes) and your notes, and answers the way it does during a call: your saved question buttons, Fast, Balanced or Deep, a full-window view, and a Slack follow-up. Long calls are read whole instead of only their last hour.
 - A calmer summary toolbar. One row: Regenerate (with a menu for Update from my edits, template, language and AI model), Fix a word, and on the right Copy and Slack. Undo appears only when there is something to undo, and Fix a word's confirmation has an Undo button.

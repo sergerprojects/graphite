@@ -2,7 +2,7 @@
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "Graphite",
     "mainBinaryName": "graphite",
-    "version": "0.9.36",
+    "version": "0.9.37",
     "identifier": "com.graphite.ai",
     "build": {
         "frontendDist": "../out",
