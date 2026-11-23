@@ -16,14 +16,16 @@ const MODELS: { value: ChatModel; label: string }[] = [
 
 interface Props {
   /** Latest transcript as plain text, with speaker names. */
-  getTranscript: () => string;
+  getTranscript: () => string | Promise<string>;
   notes: string;
   title: string;
   attendees: string[];
+  /** The meeting is over: answer about the whole call, and the placeholder says so. */
+  finished?: boolean;
 }
 
-/** Chat with the meeting while it happens. Answers come from your own Claude Code login. */
-export function LiveChat({ getTranscript, notes, title, attendees }: Props) {
+/** Chat with the meeting, while it happens or after. Answers come from your own Claude Code login. */
+export function LiveChat({ getTranscript, notes, title, attendees, finished = false }: Props) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -63,7 +65,7 @@ export function LiveChat({ getTranscript, notes, title, attendees }: Props) {
     setTurns([...history, { role: 'user', text: q }]);
     setBusy(true);
     try {
-      const answer = await askMeeting({ question: q, transcript: getTranscript(), notes, title, attendees, history, model });
+      const answer = await askMeeting({ question: q, transcript: await getTranscript(), notes, title, attendees, history, model, finished });
       setTurns(t => [...t, { role: 'assistant', text: answer }]);
     } catch (e) {
       setError(typeof e === 'string' ? e : 'Something went wrong. Try again.');
@@ -115,7 +117,7 @@ export function LiveChat({ getTranscript, notes, title, attendees }: Props) {
           title={title}
           attendees={attendees}
           kinds={['followup', 'short']}
-          getBody={async () => `${notes.trim() ? `My notes:\n${notes.trim()}\n\n` : ''}Transcript:\n${getTranscript()}`}
+          getBody={async () => `${notes.trim() ? `My notes:\n${notes.trim()}\n\n` : ''}Transcript:\n${await getTranscript()}`}
           trigger={open => (
             <button
               onClick={open}

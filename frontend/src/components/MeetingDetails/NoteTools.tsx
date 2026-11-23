@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Replace, Undo2, Wand2, X } from 'lucide-react';
+import { Replace, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { buildRefinePrompt } from '@/lib/refine-notes';
 
 interface Props {
@@ -28,8 +29,12 @@ interface FixResult {
   title: number;
 }
 
-/** Everything for correcting notes after the fact: AI rewrite from edits, fix a word everywhere, undo. */
-export function NoteTools({ meetingId, getMarkdown, saveEdits, onGenerate, onReload }: Props) {
+/** Whether there is a previous version of the notes to go back to, and how to go back. */
+export function useNoteBackup(
+  meetingId: string,
+  saveEdits: () => Promise<void>,
+  onReload: () => Promise<void>,
+) {
   const [hasBackup, setHasBackup] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -45,7 +50,7 @@ export function NoteTools({ meetingId, getMarkdown, saveEdits, onGenerate, onRel
     void refreshBackup();
   }, [refreshBackup]);
 
-  const undo = async () => {
+  const undo = useCallback(async () => {
     setBusy(true);
     try {
       await saveEdits();
@@ -58,47 +63,41 @@ export function NoteTools({ meetingId, getMarkdown, saveEdits, onGenerate, onRel
     } finally {
       setBusy(false);
     }
-  };
+  }, [meetingId, saveEdits, onReload, refreshBackup]);
 
+  return { hasBackup, setHasBackup, busy, undo };
+}
+
+/** Shown only while there is something to go back to. */
+export function UndoButton({ onUndo, busy }: { onUndo: () => void; busy: boolean }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <RefineNotes
-        meetingId={meetingId}
-        getMarkdown={getMarkdown}
-        saveEdits={saveEdits}
-        onGenerate={onGenerate}
-        onBackedUp={() => setHasBackup(true)}
-      />
-      <FixWord
-        meetingId={meetingId}
-        saveEdits={saveEdits}
-        onReload={onReload}
-        onBackedUp={() => setHasBackup(true)}
-      />
-      {hasBackup && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void undo()}
-          disabled={busy}
-          title="Go back to the notes as they were before the last update or fix. Click again to switch back."
-        >
-          <Undo2 size={18} />
-          <span className="hidden @[40rem]:inline">Undo</span>
-        </Button>
-      )}
-    </div>
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onUndo}
+      disabled={busy}
+      title="Go back to the notes as they were before the last update or fix. Click again to switch back."
+    >
+      <Undo2 size={18} />
+      <span className="hidden @[40rem]:inline">Undo</span>
+    </Button>
   );
 }
 
-function RefineNotes({
+/** Ask for a rewrite of the notes that keeps the person's own edits. Opened from the Regenerate menu. */
+export function RefineNotesDialog({
+  open,
+  onOpenChange,
   meetingId,
   getMarkdown,
   saveEdits,
   onGenerate,
   onBackedUp,
-}: Pick<Props, 'meetingId' | 'getMarkdown' | 'saveEdits' | 'onGenerate'> & { onBackedUp: () => void }) {
-  const [open, setOpen] = useState(false);
+}: Pick<Props, 'meetingId' | 'getMarkdown' | 'saveEdits' | 'onGenerate'> & {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onBackedUp: () => void;
+}) {
   const [instruction, setInstruction] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -113,7 +112,7 @@ function RefineNotes({
       }
       await invoke('backup_summary', { meetingId });
       onBackedUp();
-      setOpen(false);
+      onOpenChange(false);
       await onGenerate(buildRefinePrompt(markdown, instruction));
       setInstruction('');
     } catch (e) {
@@ -124,14 +123,9 @@ function RefineNotes({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" title="Rewrite the notes using your edits">
-          <Wand2 size={18} />
-          <span className="hidden @[40rem]:inline">Update from my edits</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 space-y-3">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md space-y-3" aria-describedby={undefined}>
+        <DialogTitle>Update from my edits</DialogTitle>
         <p className="text-sm text-gray-700">
           Graphite rewrites these notes from the transcript and keeps your edits, including your spellings,
           everywhere they apply. You can undo it.
@@ -143,24 +137,25 @@ function RefineNotes({
           rows={3}
         />
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button size="sm" onClick={() => void run()} disabled={busy}>
             Update notes
           </Button>
         </div>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function FixWord({
+export function FixWord({
   meetingId,
   saveEdits,
   onReload,
   onBackedUp,
-}: Pick<Props, 'meetingId' | 'saveEdits' | 'onReload'> & { onBackedUp: () => void }) {
+  onUndo,
+}: Pick<Props, 'meetingId' | 'saveEdits' | 'onReload'> & { onBackedUp: () => void; onUndo: () => void }) {
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -194,7 +189,10 @@ function FixWord({
         total === 0
           ? `Didn’t find “${from.trim()}”.`
           : `Changed ${total} place${total === 1 ? '' : 's'} to “${to.trim()}”.`,
-        { description: total > 0 && remember ? 'Saved to your words for future notes.' : undefined },
+        {
+          description: total > 0 && remember ? 'Saved to your words for future notes.' : undefined,
+          action: total > 0 ? { label: 'Undo', onClick: onUndo } : undefined,
+        },
       );
       setFrom('');
       setTo('');

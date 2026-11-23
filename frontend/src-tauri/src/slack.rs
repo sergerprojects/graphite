@@ -81,9 +81,13 @@ fn keywords(query: &str) -> Vec<String> {
         .collect()
 }
 
-/// Channels and people matching what was typed.
+static FIND_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Channels and people matching what was typed. Both searches run together in one Claude Code run, and a
+/// newer search cancels an older one still waiting, so typing doesn't pile up background work.
 #[tauri::command]
 pub async fn slack_find(query: String) -> Result<Vec<SlackTarget>, String> {
+    use std::sync::atomic::Ordering;
     let kw = keywords(&query);
     if kw.is_empty() {
         return Ok(Vec::new());
@@ -93,10 +97,15 @@ pub async fn slack_find(query: String) -> Result<Vec<SlackTarget>, String> {
         "response_format": "concise", "channel_types": "public_channel,private_channel",
     });
     let user_args = json!({ "keywords": kw, "natural_language_query": query, "limit": 5, "response_format": "concise" });
-    let (chans, users) = tokio::join!(
-        crate::chat::call_mcp_tool("mcp__slack__slack_search_channels", &chan_args, TOOL_TIMEOUT),
-        crate::chat::call_mcp_tool("mcp__slack__slack_search_users", &user_args, TOOL_TIMEOUT),
-    );
+    let mine = FIND_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let gone = move || FIND_GEN.load(Ordering::SeqCst) != mine;
+    let calls = [
+        ("mcp__slack__slack_search_channels", chan_args),
+        ("mcp__slack__slack_search_users", user_args),
+    ];
+    let mut all = crate::chat::call_mcp_tools(&calls, TOOL_TIMEOUT, Some(&gone)).await?;
+    let users = all.remove(1);
+    let chans = all.remove(0);
     // One failing search must not hide the other; both failing is an error worth showing.
     if let (Err(e), Err(_)) = (&chans, &users) {
         return Err(e.clone());

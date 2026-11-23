@@ -4,6 +4,7 @@ import { Transcript, TranscriptSegmentData } from '@/types';
 import { TranscriptView } from '@/components/TranscriptView';
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
+import { MeetingChat } from './MeetingChat';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { deleteTranscriptSegment, relabelSpeaker } from '@/lib/capture';
@@ -29,6 +30,7 @@ interface TranscriptPanelProps {
   // Retranscription props
   meetingId?: string;
   meetingFolderPath?: string | null;
+  meetingTitle?: string;
   onRefetchTranscripts?: () => Promise<void>;
 }
 
@@ -49,6 +51,7 @@ export function TranscriptPanel({
   onLoadMore,
   meetingId,
   meetingFolderPath,
+  meetingTitle,
   onRefetchTranscripts,
 }: TranscriptPanelProps) {
   // Convert transcripts to segments if pagination is not used but we want virtualization
@@ -115,6 +118,13 @@ export function TranscriptPanel({
           } : undefined}
         />
       </div>
+
+      {/* Ask questions of the finished meeting. The answer panel opens upward over the transcript. */}
+      {!isRecording && meetingId && convertedSegments.length > 0 && (
+        <div className="relative flex border-t border-gray-200 bg-gray-50 p-2">
+          <MeetingChat meetingId={meetingId} title={meetingTitle ?? ''} folder={meetingFolderPath} />
+        </div>
+      )}
 
       {/* Custom prompt input at bottom of transcript section */}
       {!isRecording && convertedSegments.length > 0 && (

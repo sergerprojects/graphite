@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.36
+- Ask a finished meeting questions. Under the transcript there is now an "Ask about this meeting…" box. It reads the whole saved transcript (with any speaker names and word fixes) and your notes, and answers the way it does during a call: your saved question buttons, Fast, Balanced or Deep, a full-window view, and a Slack follow-up. Long calls are read whole instead of only their last hour.
+- A calmer summary toolbar. One row: Regenerate (with a menu for Update from my edits, template, language and AI model), Fix a word, and on the right Copy and Slack. Undo appears only when there is something to undo, and Fix a word's confirmation has an Undo button.
+- Your edits to a summary save themselves a moment after you stop typing, and when you leave the page, so there is no Save button. A small "Saving…" and "Saved" tells you.
+- Finding a Slack channel or person is faster. Places you shared to before show up instantly as you type and when you open the dialog. The search of all of Slack waits for a pause (or Enter), runs both lookups together in one go, and a newer search cancels an older one. On this machine the lookup went from about 22 to about 13 seconds, and a repeat of the same search is instant. The same speed-up applies to the calendar lookup.
+
 ## 0.9.35
 - The calendar now works with the Google Workspace connector, not only the Google Calendar one. People who installed Google through DevBar's "google-workspace" plugin saw "Couldn't refresh your calendar ... No such tool available". Graphite now tries the Google Calendar connector, then the Google Workspace connector, then the Workspace plugin, remembers the one that works, and says clearly when none is signed in.
 

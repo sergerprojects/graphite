@@ -226,6 +226,7 @@ export default function PageContent({
               onLoadMore={onLoadMore}
               meetingId={meeting.id}
               meetingFolderPath={meeting.folder_path}
+              meetingTitle={meetingData.meetingTitle}
               onRefetchTranscripts={onRefetchTranscripts}
             />
           }

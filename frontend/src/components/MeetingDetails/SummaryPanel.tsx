@@ -8,15 +8,13 @@ import { BlockNoteSummaryView, BlockNoteSummaryViewRef } from '@/components/AISu
 import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
-import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
-import { NoteTools } from './NoteTools';
-import { ShareToSlack } from '@/components/Slack/ShareToSlack';
+import { SummaryShareButtons, SaveStatus } from './SummaryUpdaterButtonGroup';
+import { FixWord, RefineNotesDialog, UndoButton, useNoteBackup } from './NoteTools';
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { toast } from 'sonner';
-import { Languages, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { LanguagePickerPopover } from '@/components/LanguagePickerPopover';
 import { useRecentLanguages } from '@/hooks/useRecentLanguages';
 import { labelForCode } from '@/lib/summary-languages';
@@ -37,8 +35,8 @@ interface SummaryPanelProps {
   meetingTitle: string;
   isSummaryDirty: boolean;
   summaryRef: RefObject<BlockNoteSummaryViewRef>;
-  isSaving: boolean;
-  onSaveAll: () => Promise<void>;
+  isSaving?: boolean;
+  onSaveAll?: () => Promise<void>;
   onCopySummary: () => Promise<void>;
   aiSummary: MeetingSummary | null;
   summaryStatus: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
@@ -69,8 +67,6 @@ export function SummaryPanel({
   meetingTitle,
   isSummaryDirty,
   summaryRef,
-  isSaving,
-  onSaveAll,
   onCopySummary,
   aiSummary,
   summaryStatus,
@@ -222,87 +218,60 @@ export function SummaryPanel({
   const isSummaryLoading = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
   const hasSummary = hasVisibleSummaryContent(aiSummary);
 
-  const languageSlot = (
-    <Popover open={langPickerOpen} onOpenChange={setLangPickerOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          title={`Summary language: ${effectiveLangLabel}${isLocalFallbackLanguage ? ' (saved on this device)' : ''}`}
-          aria-label="Set summary language"
-        >
-          <Languages size={18} />
-          <span className="hidden @[40rem]:inline">{effectiveLangLabel}</span>
-          <ChevronDown size={14} className="text-gray-400" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="w-auto p-0 border-0 shadow-none bg-transparent"
-      >
-        <LanguagePickerPopover
-          value={summaryLang}
-          onChange={handleLangChange}
-          onClose={() => setLangPickerOpen(false)}
-          autoSubtitle={autoSubtitle}
-        />
-      </PopoverContent>
-    </Popover>
-  );
+  const saveEdits = async () => {
+    await summaryRef.current?.saveSummary?.();
+  };
+  const getNotesMarkdown = async () => (await summaryRef.current?.getMarkdown?.()) || '';
+  const backup = useNoteBackup(meeting.id, saveEdits, onReloadMeeting);
+  const [refineOpen, setRefineOpen] = useState(false);
 
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden h-full w-full @container">
-      {/* Top-level actions — always visible, same pattern as TranscriptPanel */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center justify-center w-full min-w-0 gap-2 flex-wrap">
-          <div className="flex-shrink-0 min-w-0">
-            <SummaryGeneratorButtonGroup
-              modelConfig={modelConfig}
-              setModelConfig={setModelConfig}
-              onSaveModelConfig={onSaveModelConfig}
-              onGenerateSummary={onGenerateSummary}
-              onStopGeneration={onStopGeneration}
-              customPrompt={customPrompt}
-              summaryStatus={summaryStatus}
-              availableTemplates={availableTemplates}
-              selectedTemplate={selectedTemplate}
-              onTemplateSelect={onTemplateSelect}
-              hasTranscripts={transcripts.length > 0}
-              hasSummary={hasSummary}
-              isModelConfigLoading={isModelConfigLoading}
-              onOpenModelSettings={onOpenModelSettings}
-              languageSlot={transcripts.length > 0 || hasSummary ? languageSlot : undefined}
-            />
-          </div>
+      {/* One row: make the summary (left), get it out (right). Edits save themselves. */}
+      <div className="px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center w-full min-w-0 gap-2 flex-wrap">
+          <SummaryGeneratorButtonGroup
+            modelConfig={modelConfig}
+            setModelConfig={setModelConfig}
+            onSaveModelConfig={onSaveModelConfig}
+            onGenerateSummary={onGenerateSummary}
+            onStopGeneration={onStopGeneration}
+            customPrompt={customPrompt}
+            summaryStatus={summaryStatus}
+            availableTemplates={availableTemplates}
+            selectedTemplate={selectedTemplate}
+            onTemplateSelect={onTemplateSelect}
+            hasTranscripts={transcripts.length > 0}
+            hasSummary={hasSummary}
+            isModelConfigLoading={isModelConfigLoading}
+            onOpenModelSettings={onOpenModelSettings}
+            languageLabel={effectiveLangLabel}
+            onOpenLanguage={() => setLangPickerOpen(true)}
+            onUpdateFromEdits={transcripts.length > 0 ? () => setRefineOpen(true) : undefined}
+            flushEdits={hasSummary ? saveEdits : undefined}
+          />
 
           {hasSummary && !isSummaryLoading && transcripts.length > 0 && (
-            <div className="flex-shrink-0">
-              <NoteTools
-                meetingId={meeting.id}
-                getMarkdown={async () => (await summaryRef.current?.getMarkdown?.()) || ''}
-                saveEdits={async () => { await summaryRef.current?.saveSummary?.(); }}
-                onGenerate={prompt => onGenerateSummary(prompt, true)}
-                onReload={onReloadMeeting}
-              />
-            </div>
+            <FixWord
+              meetingId={meeting.id}
+              saveEdits={saveEdits}
+              onReload={onReloadMeeting}
+              onBackedUp={() => backup.setHasBackup(true)}
+              onUndo={() => void backup.undo()}
+            />
           )}
+          {hasSummary && !isSummaryLoading && backup.hasBackup && (
+            <UndoButton onUndo={() => void backup.undo()} busy={backup.busy} />
+          )}
+
           {hasSummary && !isSummaryLoading && (
-            <div className="flex-shrink-0">
-              <SummaryUpdaterButtonGroup
-                isSaving={isSaving}
-                isDirty={isSummaryDirty}
-                onSave={onSaveAll}
+            <div className="ml-auto flex items-center gap-3">
+              <SaveStatus dirty={isSummaryDirty} />
+              <SummaryShareButtons
                 onCopy={onCopySummary}
-              />
-            </div>
-          )}
-          {hasSummary && !isSummaryLoading && (
-            <div className="flex-shrink-0">
-              <ShareToSlack
-                title={meetingTitle}
-                kinds={['short', 'full', 'followup']}
-                getBody={async () => {
-                  const md = (await summaryRef.current?.getMarkdown?.()) || '';
+                slackTitle={meetingTitle}
+                getSlackBody={async () => {
+                  const md = await getNotesMarkdown();
                   return md || (typeof aiSummary?.markdown === 'string' ? aiSummary.markdown : '');
                 }}
               />
@@ -310,6 +279,30 @@ export function SummaryPanel({
           )}
         </div>
       </div>
+
+      <RefineNotesDialog
+        open={refineOpen}
+        onOpenChange={setRefineOpen}
+        meetingId={meeting.id}
+        getMarkdown={getNotesMarkdown}
+        saveEdits={saveEdits}
+        onGenerate={prompt => onGenerateSummary(prompt, true)}
+        onBackedUp={() => backup.setHasBackup(true)}
+      />
+
+      <Dialog open={langPickerOpen} onOpenChange={setLangPickerOpen}>
+        <DialogContent className="w-auto max-w-none border-0 bg-transparent p-0 shadow-none" aria-describedby={undefined}>
+          <VisuallyHidden>
+            <DialogTitle>Summary language</DialogTitle>
+          </VisuallyHidden>
+          <LanguagePickerPopover
+            value={summaryLang}
+            onChange={handleLangChange}
+            onClose={() => setLangPickerOpen(false)}
+            autoSubtitle={autoSubtitle}
+          />
+        </DialogContent>
+      </Dialog>
 
       {isSummaryLoading ? (
         <div className="flex items-center justify-center flex-1">

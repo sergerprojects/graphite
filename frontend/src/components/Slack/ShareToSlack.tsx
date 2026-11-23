@@ -5,7 +5,7 @@ import { Loader2, Search, Send, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { composeSlack, findSlackTargets, postToSlack, SlackKind, SlackTarget, SLACK_KINDS } from '@/lib/slack';
+import { composeSlack, findSlackTargets, matchRecentTargets, postToSlack, rememberSlackTarget, SlackKind, SlackTarget, SLACK_KINDS } from '@/lib/slack';
 import { openExternal } from '@/lib/chat';
 
 interface Props {
@@ -28,7 +28,6 @@ export function ShareToSlack({ title, attendees = [], getBody, kinds = ['short',
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<SlackKind>(kinds[0]);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SlackTarget[]>([]);
   const [searching, setSearching] = useState(false);
   const [target, setTarget] = useState<SlackTarget | null>(null);
   const [message, setMessage] = useState('');
@@ -60,7 +59,6 @@ export function ShareToSlack({ title, attendees = [], getBody, kinds = ['short',
     bodyRef.current = '';
     setTarget(null);
     setQuery('');
-    setResults([]);
     setConfirmSend(false);
     compose(kind);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,25 +69,43 @@ export function ShareToSlack({ title, attendees = [], getBody, kinds = ['short',
     compose(k);
   };
 
-  // Search as the person types (after a short pause).
-  useEffect(() => {
-    if (!open || query.trim().length < 2 || target) {
-      setResults([]);
-      return;
-    }
-    const t = setTimeout(async () => {
-      setSearching(true);
-      try {
-        setResults(await findSlackTargets(query));
+  // Places you used before show up instantly. The full search through Slack takes several seconds, so it
+  // waits for a pause in typing (or Enter) and a newer search replaces an older one.
+  const searchSeq = useRef(0);
+  const [remote, setRemote] = useState<SlackTarget[]>([]);
+  const runSearch = async (q: string) => {
+    const mine = ++searchSeq.current;
+    setSearching(true);
+    try {
+      const found = await findSlackTargets(q);
+      if (mine === searchSeq.current) {
+        setRemote(found);
         setError(null);
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setSearching(false);
       }
-    }, 450);
+    } catch (e) {
+      if (mine === searchSeq.current && String(e) !== 'cancelled') setError(String(e));
+    } finally {
+      if (mine === searchSeq.current) setSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    searchSeq.current++;
+    setRemote([]);
+    setSearching(false);
+    if (!open || query.trim().length < 2 || target) return;
+    const t = setTimeout(() => void runSearch(query), 800);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, open, target]);
+
+  const recent = open && !target ? matchRecentTargets(query) : [];
+  const shown = [...recent, ...remote.filter(r => !recent.some(x => x.id === r.id))];
+
+  const choose = (t: SlackTarget) => {
+    rememberSlackTarget(t);
+    setTarget(t);
+  };
 
   const post = async (send: boolean) => {
     if (!target) return;
@@ -145,22 +161,33 @@ export function ShareToSlack({ title, attendees = [], getBody, kinds = ['short',
                     autoFocus
                     value={query}
                     onChange={e => setQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && query.trim().length >= 2) void runSearch(query);
+                    }}
                     placeholder="Channel or person, e.g. pace-leaders or Sam"
                     className="flex-1 bg-transparent text-sm outline-none"
                   />
                   {searching && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
                 </div>
-                {results.length > 0 && (
+                {query.trim().length === 0 && shown.length > 0 && (
+                  <p className="mt-1 px-1 text-xs text-gray-500">Recent</p>
+                )}
+                {shown.length > 0 && (
                   <ul className="mt-1 max-h-44 overflow-y-auto rounded-md border border-gray-200 text-sm">
-                    {results.map(r => (
+                    {shown.map(r => (
                       <li key={r.id}>
-                        <button className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-gray-50" onClick={() => setTarget(r)}>
+                        <button className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-gray-50" onClick={() => choose(r)}>
                           <span className="font-medium">{r.name}</span>
                           <span className="ml-3 truncate text-xs text-gray-500">{r.detail}</span>
                         </button>
                       </li>
                     ))}
                   </ul>
+                )}
+                {query.trim().length >= 2 && (
+                  <p className="mt-1 px-1 text-xs text-gray-500">
+                    {searching ? 'Searching Slack…' : remote.length === 0 && shown.length === 0 ? 'Nothing yet. Press Enter to search Slack.' : 'Press Enter to search all of Slack.'}
+                  </p>
                 )}
               </div>
             )}

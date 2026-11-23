@@ -11,7 +11,8 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-const MAX_TRANSCRIPT_CHARS: usize = 60_000;
+// About 75k tokens: a long call fits whole, which matters once the meeting is over.
+const MAX_TRANSCRIPT_CHARS: usize = 300_000;
 const TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Deserialize)]
@@ -72,15 +73,26 @@ pub fn build_prompt(
     title: &str,
     attendees: &[String],
     history: &[ChatTurn],
+    finished: bool,
 ) -> String {
     let mut p = String::new();
-    p.push_str(
-        "You are a discreet assistant sitting in on a live meeting with the user. \
+    if finished {
+        p.push_str(
+            "You are helping the user look back at a meeting that has already ended. Answer from the full \
+transcript and notes: lead with the answer, use short bullets, quote or point to the moment (with its \
+[mm:ss] time) when it helps, and go deeper when asked. Use only what the transcript, notes and invite \
+say; if something is not there, say so. Lines starting \"You:\" are the user speaking. \
+The transcript is machine-made and may contain mishearings.\n\n",
+        );
+    } else {
+        p.push_str(
+            "You are a discreet assistant sitting in on a live meeting with the user. \
 They glance at your answer mid-conversation, so be fast and brief: lead with the answer, \
 use short bullets, no preamble, no restating the question. Use only what the transcript, notes \
 and invite say; if something is not there, say so. Lines starting \"You:\" are the user speaking. \
 The transcript is machine-made and may contain mishearings.\n\n",
-    );
+        );
+    }
     if !title.trim().is_empty() {
         p.push_str(&format!("Meeting: {}\n", title.trim()));
     }
@@ -91,7 +103,8 @@ The transcript is machine-made and may contain mishearings.\n\n",
         p.push_str(&format!("\nThe user's own notes so far:\n{}\n", notes.trim()));
     }
     p.push_str(&format!(
-        "\nTranscript so far (latest at the bottom):\n{}\n",
+        "\n{} (latest at the bottom):\n{}\n",
+        if finished { "Full transcript" } else { "Transcript so far" },
         tail_chars(transcript, MAX_TRANSCRIPT_CHARS).trim()
     ));
     if !history.is_empty() {
@@ -114,6 +127,7 @@ pub async fn meeting_chat(
     attendees: Vec<String>,
     history: Vec<ChatTurn>,
     model: Option<String>,
+    finished: Option<bool>,
 ) -> Result<String, String> {
     if question.trim().is_empty() {
         return Err("Type a question first.".to_string());
@@ -123,7 +137,7 @@ pub async fn meeting_chat(
         Some("opus") => "opus",
         _ => "sonnet",
     };
-    let prompt = build_prompt(&question, &transcript, &notes, &title, &attendees, &history);
+    let prompt = build_prompt(&question, &transcript, &notes, &title, &attendees, &history, finished.unwrap_or(false));
 
     run_claude(&prompt, model, &[], TIMEOUT).await
 }
@@ -260,45 +274,100 @@ fn unpersist(text: &str) -> String {
 
 /// Ask Claude Code to make exactly one MCP tool call and return that call's raw result.
 pub async fn call_mcp_tool(tool: &str, args: &serde_json::Value, timeout: Duration) -> Result<String, String> {
-    let prompt = format!(
-        "Make exactly this MCP tool call, once, with the arguments given verbatim. Do not call any other tool. Do not retry. When done reply with the single word DONE.\n1. {} with arguments {}",
-        tool, args
+    let mut all = call_mcp_tools(&[(tool, args.clone())], timeout, None).await?;
+    all.remove(0)
+}
+
+/// Ask Claude Code to make several MCP tool calls together, in one run, and return each call's raw
+/// result in the order given. One process start and one model round trip instead of one per call, and
+/// the process is stopped the moment every result is in (no waiting for the model to say "DONE").
+/// `superseded` lets a newer request cancel this one while it waits.
+pub async fn call_mcp_tools(
+    calls: &[(&str, serde_json::Value)],
+    timeout: Duration,
+    superseded: Option<&(dyn Fn() -> bool + Sync)>,
+) -> Result<Vec<Result<String, String>>, String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let mut prompt = String::from(
+        "Make exactly these MCP tool calls, once each, all in the same turn without waiting for one before starting the next, with the arguments given verbatim. Do not call any other tool. Do not retry. When done reply with the single word DONE.\n",
     );
+    for (i, (tool, args)) in calls.iter().enumerate() {
+        prompt.push_str(&format!("{}. {} with arguments {}\n", i + 1, tool, args));
+    }
+    let allowed = calls.iter().map(|(t, _)| *t).collect::<Vec<_>>().join(",");
     let claude = find_claude().ok_or_else(|| {
         "Claude Code isn't installed on this computer. Install it from claude.com/claude-code, sign in once in Terminal, then try again.".to_string()
     })?;
     let mut child = Command::new(&claude)
-        .args(["-p", "--model", "haiku", "--setting-sources", "user", "--allowedTools", tool, "--output-format", "stream-json", "--verbose", "--max-turns", "6"])
+        .args(["-p", "--model", "haiku", "--setting-sources", "user", "--allowedTools", &allowed, "--output-format", "stream-json", "--verbose", "--max-turns", "6"])
         .env_clear()
         .envs(crate::platform::base_env())
         .env("USER", std::env::var("USER").unwrap_or_default())
         .env("LOGNAME", std::env::var("LOGNAME").or_else(|_| std::env::var("USER")).unwrap_or_default())
         .env("SHELL", if cfg!(windows) { "" } else { "/bin/zsh" })
         .env("LANG", "en_US.UTF-8")
+        // Copying a tool call needs no thinking; skipping it saves several seconds a call.
+        .env("MAX_THINKING_TOKENS", "0")
         .current_dir(std::env::temp_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("Could not start Claude Code: {}", e))?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(prompt.as_bytes()).await.map_err(|e| e.to_string())?;
     }
-    let out = tokio::time::timeout(timeout, child.wait_with_output())
-        .await
-        .map_err(|_| "Claude took too long to answer.".to_string())?
-        .map_err(|e| e.to_string())?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let results = lift_tool_results(&stdout);
-    match results.into_iter().find(|r| r.tool == tool) {
-        Some(r) if !r.is_error => Ok(r.text),
-        Some(r) => Err(format!("The connector returned an error: {}", r.text.chars().take(200).collect::<String>())),
-        None => {
-            let server = tool.strip_prefix("mcp__").and_then(|t| t.split("__").next()).unwrap_or("connector");
-            Err(format!("The {server} connector wasn't reachable. If it needs signing in, run /mcp in Claude Code and authorize {server}, then try again."))
+    let mut lines = BufReader::new(child.stdout.take().ok_or("Could not read Claude's answer.")?).lines();
+    let deadline = tokio::time::Instant::now() + timeout;
+    let mut seen = String::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(150));
+    let mut results: Vec<ToolResult> = Vec::new();
+
+    loop {
+        tokio::select! {
+            line = lines.next_line() => match line {
+                Ok(Some(l)) => {
+                    seen.push_str(&l);
+                    seen.push('\n');
+                    if l.contains("tool_result") {
+                        results = lift_tool_results(&seen);
+                        if calls.iter().all(|(t, _)| results.iter().any(|r| r.tool == *t)) {
+                            break;
+                        }
+                    }
+                }
+                _ => break, // the process ended
+            },
+            _ = tick.tick() => {
+                if superseded.map(|f| f()).unwrap_or(false) {
+                    let _ = child.kill().await;
+                    return Err("cancelled".to_string());
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                let _ = child.kill().await;
+                if results.is_empty() {
+                    return Err("Claude took too long to answer.".to_string());
+                }
+                break;
+            }
         }
     }
+    let _ = child.kill().await;
+
+    Ok(calls
+        .iter()
+        .map(|(tool, _)| match results.iter().find(|r| r.tool == *tool) {
+            Some(r) if !r.is_error => Ok(r.text.clone()),
+            Some(r) => Err(format!("The connector returned an error: {}", r.text.chars().take(200).collect::<String>())),
+            None => {
+                let server = tool.strip_prefix("mcp__").and_then(|t| t.split("__").next()).unwrap_or("connector");
+                Err(format!("The {server} connector wasn't reachable. If it needs signing in, run /mcp in Claude Code and authorize {server}, then try again."))
+            }
+        })
+        .collect())
 }
 
 /// Open an https link in the default browser (meeting links, calendar event).
@@ -329,12 +398,21 @@ mod tests {
             "Sam / Alex",
             &["Sam Rivera".to_string()],
             &[ChatTurn { role: "user".into(), text: "earlier q".into() }, ChatTurn { role: "assistant".into(), text: "earlier a".into() }],
+            false,
         );
         assert!(p.contains("Meeting: Sam / Alex"));
         assert!(p.contains("Invited: Sam Rivera"));
         assert!(p.contains("ask about headcount"));
         assert!(p.find("budget is flat").unwrap() < p.find("earlier q").unwrap());
         assert!(p.trim_end().ends_with("User asks: What did I miss?"));
+    }
+
+    #[test]
+    fn finished_meeting_prompt_looks_back() {
+        let p = build_prompt("What was decided?", "[00:01] Sam: ship it", "", "Sync", &[], &[], true);
+        assert!(p.contains("already ended"));
+        assert!(p.contains("Full transcript"));
+        assert!(!p.contains("live meeting"));
     }
 
     #[test]

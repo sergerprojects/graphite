@@ -7,6 +7,7 @@ import { AISummary } from './index';
 import { Block } from '@blocknote/core';
 import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/shadcn';
+import { toast } from 'sonner';
 import { blocksToMarkdownSafely } from '@/lib/blocknote-markdown';
 import "@blocknote/shadcn/style.css";
 
@@ -80,6 +81,8 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
   const [currentBlocks, setCurrentBlocks] = useState<Block[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const isContentLoaded = useRef(false);
+  // The newest blocks, so a save that finishes after more typing doesn't mark those edits as saved.
+  const latestBlocks = useRef<Block[] | null>(null);
 
   // Create BlockNote editor for markdown parsing
   const editor = useCreateBlockNote({
@@ -121,6 +124,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
   const handleEditorChange = useCallback((blocks: Block[]) => {
     // Only set dirty flag if content has finished loading
     if (isContentLoaded.current) {
+      latestBlocks.current = blocks;
       setCurrentBlocks(blocks);
       setIsDirty(true);
     }
@@ -153,8 +157,9 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
         saveData.markdown = markdownResult.markdown;
       }
 
+      const saving = currentBlocks;
       await onSave(saveData);
-      setIsDirty(false);
+      if (latestBlocks.current === null || latestBlocks.current === saving) setIsDirty(false);
       console.log('✅ Save successful');
     } catch (error) {
       console.error('❌ Save failed:', error);
@@ -163,6 +168,18 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
       setIsSaving(false);
     }
   }, [onSave, isDirty, currentBlocks, editor]);
+
+  // Save a moment after the person stops typing, and once more when they leave the page.
+  const saveRef = useRef(handleSave);
+  saveRef.current = handleSave;
+  useEffect(() => {
+    if (!isDirty || !onSave) return;
+    const t = setTimeout(() => {
+      handleSave().catch(e => toast.error("Couldn't save your edits", { description: String(e) }));
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [isDirty, currentBlocks, handleSave, onSave]);
+  useEffect(() => () => { void saveRef.current().catch(() => {}); }, []);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({

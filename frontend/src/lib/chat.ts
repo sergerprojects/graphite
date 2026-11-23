@@ -6,7 +6,7 @@ export interface ChatTurn {
   text: string;
 }
 
-/** Ask Claude (the user's own Claude Code login) about the meeting in progress. */
+/** Ask Claude (the user's own Claude Code login) about the meeting, live or finished. */
 export async function askMeeting(args: {
   question: string;
   transcript: string;
@@ -15,6 +15,8 @@ export async function askMeeting(args: {
   attendees: string[];
   history: ChatTurn[];
   model: ChatModel;
+  /** True once the meeting is over: answers look back at the whole call. */
+  finished?: boolean;
 }): Promise<string> {
   return invoke<string>('meeting_chat', args);
 }

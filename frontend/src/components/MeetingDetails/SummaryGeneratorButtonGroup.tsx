@@ -4,7 +4,6 @@ import { ModelConfig, ModelSettingsModal } from '@/components/ModelSettingsModal
 import {
   Dialog,
   DialogContent,
-  DialogTrigger,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
@@ -14,14 +13,18 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sparkles, Settings, Loader2, FileText, Check, Square } from 'lucide-react';
+import { Sparkles, Loader2, Check, Square, ChevronDown, Wand2 } from 'lucide-react';
 import Analytics from '@/lib/analytics';
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect } from 'react';
 
 interface SummaryGeneratorButtonGroupProps {
-  languageSlot?: ReactNode;
   modelConfig: ModelConfig;
   setModelConfig: (config: ModelConfig | ((prev: ModelConfig) => ModelConfig)) => void;
   onSaveModelConfig: (config?: ModelConfig) => Promise<void>;
@@ -36,8 +39,20 @@ interface SummaryGeneratorButtonGroupProps {
   hasSummary?: boolean;
   isModelConfigLoading?: boolean;
   onOpenModelSettings?: (openFn: () => void) => void;
+  /** Name of the summary language now in use ("Auto" when it follows the transcript). */
+  languageLabel: string;
+  onOpenLanguage: () => void;
+  /** Open the "update from my edits" dialog. Only offered once there is a summary to update. */
+  onUpdateFromEdits?: () => void;
+  /** Write any unsaved edits before the summary is redone. */
+  flushEdits?: () => Promise<void>;
 }
 
+/**
+ * One main action ("Regenerate" or "Generate summary") with a menu beside it. The menu holds the
+ * other way to redo the notes (update from my edits) and the settings that only matter when it runs:
+ * template, language and model.
+ */
 export function SummaryGeneratorButtonGroup({
   modelConfig,
   setModelConfig,
@@ -53,25 +68,16 @@ export function SummaryGeneratorButtonGroup({
   hasSummary = false,
   isModelConfigLoading = false,
   onOpenModelSettings,
-  languageSlot
+  languageLabel,
+  onOpenLanguage,
+  onUpdateFromEdits,
+  flushEdits,
 }: SummaryGeneratorButtonGroupProps) {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
-  // Expose the function to open the modal via callback registration
+  // Let the page open the model settings (for example when no model is set up yet).
   useEffect(() => {
-    if (onOpenModelSettings) {
-      // Register our open dialog function with the parent by calling the callback
-      // This allows the parent to store a reference to this function
-      const openDialog = () => {
-        console.log('📱 Opening model settings dialog via callback');
-        setSettingsDialogOpen(true);
-      };
-
-      // Call the parent's callback with our open function
-      // Note: This assumes onOpenModelSettings accepts a function parameter
-      // We'll need to adjust the signature
-      onOpenModelSettings(openDialog);
-    }
+    onOpenModelSettings?.(() => setSettingsDialogOpen(true));
   }, [onOpenModelSettings]);
 
   if (!hasTranscripts) {
@@ -79,71 +85,121 @@ export function SummaryGeneratorButtonGroup({
   }
 
   const isGenerating = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
+  const templateName = availableTemplates.find(t => t.id === selectedTemplate)?.name;
 
   return (
-    <ButtonGroup>
-      {/* Generate Summary or Stop button */}
-      {isGenerating ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="bg-gradient-to-r from-red-50 to-orange-50 hover:from-red-100 hover:to-orange-100 border-red-200 px-3 gap-2"
-          onClick={() => {
-            Analytics.trackButtonClick('stop_summary_generation', 'meeting_details');
-            onStopGeneration();
-          }}
-          title="Stop summary generation"
-        >
-          <Square size={18} fill="currentColor" />
-          <span className="hidden @[24rem]:inline">Stop</span>
-        </Button>
-      ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          className="px-3 gap-2"
-          onClick={() => {
-            Analytics.trackButtonClick('generate_summary', 'meeting_details');
-            void onGenerateSummary(customPrompt);
-          }}
-          disabled={isModelConfigLoading}
-          title={
-            isModelConfigLoading
-              ? 'Loading model configuration...'
-              : hasSummary ? 'Regenerate AI Summary' : 'Generate AI Summary'
-          }
-        >
-          {isModelConfigLoading ? (
-            <>
-              <Loader2 className="animate-spin" size={18} />
-              <span className="hidden @[24rem]:inline">Processing...</span>
-            </>
-          ) : (
-            <>
-              <Sparkles size={18} />
-              <span className="hidden @[24rem]:inline">{hasSummary ? 'Regenerate Summary' : 'Generate Summary'}</span>
-            </>
-          )}
-        </Button>
-      )}
-
-      {languageSlot}
-
-      {/* Settings button */}
-      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-        <DialogTrigger asChild>
+    <>
+      <ButtonGroup>
+        {isGenerating ? (
           <Button
             variant="outline"
             size="sm"
-            title="Summary Settings"
+            className="bg-red-50 hover:bg-red-100 border-red-200 px-3 gap-2"
+            onClick={() => {
+              Analytics.trackButtonClick('stop_summary_generation', 'meeting_details');
+              onStopGeneration();
+            }}
+            title="Stop summary generation"
           >
-            <Settings />
-            <span className="hidden @[40rem]:inline">AI Model</span>
+            <Square size={18} fill="currentColor" />
+            <span>Stop</span>
           </Button>
-        </DialogTrigger>
-        <DialogContent
-          aria-describedby={undefined}
-        >
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="px-3 gap-2"
+            onClick={() => {
+              Analytics.trackButtonClick('generate_summary', 'meeting_details');
+              void (async () => {
+                try {
+                  await flushEdits?.();
+                } catch {
+                  // The edits stay in the editor; still do what was asked.
+                }
+                await onGenerateSummary(customPrompt);
+              })();
+            }}
+            disabled={isModelConfigLoading}
+            title={
+              isModelConfigLoading
+                ? 'Loading model configuration...'
+                : hasSummary
+                  ? 'Write the summary again from the transcript. Your edits to it are replaced; Update from my edits keeps them.'
+                  : 'Write the summary from the transcript'
+            }
+          >
+            {isModelConfigLoading ? (
+              <>
+                <Loader2 className="animate-spin" size={18} />
+                <span>Loading…</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={18} />
+                <span>{hasSummary ? 'Regenerate' : 'Generate summary'}</span>
+              </>
+            )}
+          </Button>
+        )}
+
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" aria-label="Summary options" title="Update from my edits, template, language, model">
+              <ChevronDown size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            {hasSummary && onUpdateFromEdits && !isGenerating && (
+              <>
+                <DropdownMenuItem onSelect={onUpdateFromEdits} className="gap-2">
+                  <Wand2 size={16} />
+                  <div>
+                    <div>Update from my edits…</div>
+                    <div className="text-xs text-gray-500">Rewrites the notes and keeps what you changed</div>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Used when the summary is written
+            </DropdownMenuLabel>
+            {availableTemplates.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="justify-between gap-3">
+                  <span>Template</span>
+                  <span className="ml-auto truncate text-xs text-gray-500">{templateName ?? ''}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {availableTemplates.map(template => (
+                    <DropdownMenuItem
+                      key={template.id}
+                      onClick={() => onTemplateSelect(template.id, template.name)}
+                      title={template.description}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span>{template.name}</span>
+                      {selectedTemplate === template.id && <Check className="h-4 w-4 text-green-600" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            <DropdownMenuItem onSelect={onOpenLanguage} className="justify-between gap-3">
+              <span>Language</span>
+              <span className="truncate text-xs text-gray-500">{languageLabel}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setSettingsDialogOpen(true)} className="justify-between gap-3">
+              <span>AI model</span>
+              <span className="truncate text-xs text-gray-500">{modelConfig.model ?? 'Not set'}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ButtonGroup>
+
+      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
+        <DialogContent aria-describedby={undefined}>
           <VisuallyHidden>
             <DialogTitle>Model Settings</DialogTitle>
           </VisuallyHidden>
@@ -159,38 +215,6 @@ export function SummaryGeneratorButtonGroup({
           />
         </DialogContent>
       </Dialog>
-
-      {/* Template selector dropdown */}
-      {availableTemplates.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              title="Select summary template"
-            >
-              <FileText />
-              <span className="hidden @[40rem]:inline">Template</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {availableTemplates.map((template) => (
-              <DropdownMenuItem
-                key={template.id}
-                onClick={() => onTemplateSelect(template.id, template.name)}
-                title={template.description}
-                className="flex items-center justify-between gap-2"
-              >
-                <span>{template.name}</span>
-                {selectedTemplate === template.id && (
-                  <Check className="h-4 w-4 text-green-600" />
-                )}
-              </DropdownMenuItem>
-            ))}
-
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </ButtonGroup>
+    </>
   );
 }
